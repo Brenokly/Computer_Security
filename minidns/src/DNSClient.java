@@ -97,12 +97,18 @@ public class DNSClient {
    * Usa o protocolo de 3 linhas.
    */
   private static void secureSend(PrintWriter writer, String plaintext, byte[] aesK, byte[] hmacK) throws Exception {
+
+    System.out.println("\n  [LOG-SEGURANÇA Envio] Mensagem original: \"" + plaintext + "\"");
+    System.out.println("  [LOG-SEGURANÇA Envio] 1. Gerando novo VI (Vetor de Inicialização)...");
+
     // 1. Gera um NOVO VI (Vetor de Inicialização)
     IvParameterSpec vi = CryptoUtils.gerarVI();
     byte[] viBytes = vi.getIV();
 
     // Cifra a mensagem (AES)
     String cipherTextB64 = CryptoUtils.cifrarAES(plaintext, aesK, vi);
+
+    System.out.println("  [LOG-SEGURANÇA Envio] 2. Cifrando com AES-CBC ->: " + cipherTextB64);
 
     // Calcula o HMAC (Autenticidade) da mensagem cifrada
     byte[] hmacBytes = CryptoUtils.calcularHmacSha256(hmacK,
@@ -111,6 +117,9 @@ public class DNSClient {
     // Converte VI e HMAC para Base64
     String viB64 = Base64.getEncoder().encodeToString(viBytes);
     String hmacB64 = Base64.getEncoder().encodeToString(hmacBytes);
+
+    System.out.println("  [LOG-SEGURANÇA Envio] 3. Calculando HMAC do texto cifrado ->: " + hmacB64);
+    System.out.println("  [LOG-SEGURANÇA Envio] 4. Enviando 3 linhas (Cifra, HMAC, VI)...");
 
     // Envia as 3 partes, uma por linha
     writer.println(cipherTextB64);
@@ -162,35 +171,45 @@ public class DNSClient {
     }
 
     /**
-     * Verifica o HMAC e decifra a mensagem recebida do servidor.
+     * Verifica o HMAC e decifra a mensagem.
      */
     private String secureDecrypt(String cipherTextB64, String hmacB64, String viB64) {
       try {
-        // Decodifica o HMAC
+
+        System.out.println("\n  [LOG-SEGURANÇA Recebimento] 1. Recebidas 3 linhas.");
+        System.out
+            .println("  [LOG-SEGURANÇA Recebimento]    > Cifra (preview): " + cipherTextB64.substring(0, 10) + "...");
+        System.out.println("  [LOG-SEGURANÇA Recebimento]    > HMAC (preview):  " + hmacB64.substring(0, 10) + "...");
+        System.out.println("  [LOG-SEGURANÇA Recebimento] 2. Verificando HMAC...");
+
+        // Decodifica o HMAC recebido
         byte[] hmacRecebido = Base64.getDecoder().decode(hmacB64);
 
         // Checa o HMAC
         boolean hmacValido = CryptoUtils.checarHmac(
-            hmacKey, // Usa a chave HMAC correta
+            hmacKey,
             cipherTextB64.getBytes(StandardCharsets.UTF_8),
             hmacRecebido);
 
         if (!hmacValido) {
-          System.err.println(
-              "[SEGURANÇA] HMAC INVÁLIDO recebido do SERVIDOR! MENSAGEM DESCARTADA.");
-          return null; // Descarta
+          System.err.println("  [LOG-SEGURANÇA Recebimento] 3. FALHA! HMACs não conferem. MENSAGEM DESCARTADA.");
+          return null;
         }
 
-        // Decifra
+        System.out.println("  [LOG-SEGURANÇA Recebimento] 3. SUCESSO! HMAC válido.");
+        System.out.println("  [LOG-SEGURANÇA Recebimento] 4. Decifrando com AES-CBC...");
+
+        // Se o HMAC é válido, decifra a mensagem
         byte[] viBytes = Base64.getDecoder().decode(viB64);
         IvParameterSpec vi = new IvParameterSpec(viBytes);
-
         String plaintext = CryptoUtils.decifrarAES(cipherTextB64, aesKey, vi);
-        return plaintext;
 
+        System.out.println("  [LOG-SEGURANÇA Recebimento] 5. Mensagem decifrada: \"" + plaintext + "\"");
+
+        return plaintext;
       } catch (Exception e) {
-        System.err.println("[SEGURANÇA] Erro ao decifrar mensagem do servidor: " + e.getMessage());
-        return null;
+        System.err.println("[SEGURANÇA] Erro na decifragem: " + e.getMessage() + ". MENSAGEM DESCARTADA.");
+        return null; // Descarta se houver qualquer erro de criptografia
       }
     }
   }

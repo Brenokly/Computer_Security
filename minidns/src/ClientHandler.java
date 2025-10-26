@@ -17,11 +17,11 @@ public class ClientHandler extends Thread {
 
   private final Socket socket;
   private BufferedReader reader;
-  private PrintWriter myWriter; // O escritor deste cliente
-  private Map<String, String> dnsMap; // O mapa COMPARTILHADO
-  private List<PrintWriter> allWriters; // A lista COMPARTILHADA
-  private byte[] aesKey;
-  private byte[] hmacKey;
+  private final PrintWriter myWriter; // O escritor deste cliente
+  private final Map<String, String> dnsMap; // O mapa COMPARTILHADO
+  private final List<PrintWriter> allWriters; // A lista COMPARTILHADA
+  private final byte[] aesKey = SharedConfig.getAesKey();
+  private final byte[] hmacKey = SharedConfig.getHmacKey();
 
   public ClientHandler(Socket socket, Map<String, String> dnsMap, List<PrintWriter> allWriters,
       PrintWriter myWriter) {
@@ -29,8 +29,6 @@ public class ClientHandler extends Thread {
     this.dnsMap = dnsMap;
     this.allWriters = allWriters;
     this.myWriter = myWriter;
-    this.aesKey = SharedConfig.getAesKey();
-    this.hmacKey = SharedConfig.getHmacKey();
   }
 
   @Override
@@ -129,6 +127,13 @@ public class ClientHandler extends Thread {
    */
   private String secureDecrypt(String cipherTextB64, String hmacB64, String viB64) {
     try {
+
+      System.out.println("\n  [LOG-SEGURANÇA Recebimento] 1. Recebidas 3 linhas.");
+      System.out.println("  [LOG-SEGURANÇA Recebimento]    > De: " + socket.getInetAddress());
+      System.out.println("  [LOG-SEGURANÇA Recebimento]    > Cifra (preview): " + cipherTextB64.substring(0, 10) + "...");
+      System.out.println("  [LOG-SEGURANÇA Recebimento]    > HMAC (preview):  " + hmacB64.substring(0, 10) + "...");
+      System.out.println("  [LOG-SEGURANÇA Recebimento] 2. Verificando HMAC...");
+
       // Decodifica o HMAC recebido
       byte[] hmacRecebido = Base64.getDecoder().decode(hmacB64);
 
@@ -139,19 +144,21 @@ public class ClientHandler extends Thread {
           hmacRecebido);
 
       if (!hmacValido) {
-        // Chave HMAC errada ou mensagem adulterada
-        System.err.println(
-            "[SEGURANÇA] HMAC INVÁLIDO de " + socket.getInetAddress() + "! MENSAGEM DESCARTADA.");
-        return null; // Descarta a mensagem
+          System.err.println("  [LOG-SEGURANÇA Recebimento] 3. FALHA! HMACs não conferem. MENSAGEM DESCARTADA.");
+          return null;
       }
+
+      System.out.println("  [LOG-SEGURANÇA Recebimento] 3. SUCESSO! HMAC válido.");
+      System.out.println("  [LOG-SEGURANÇA Recebimento] 4. Decifrando com AES-CBC...");
 
       // Se o HMAC é válido, decifra a mensagem
       byte[] viBytes = Base64.getDecoder().decode(viB64);
       IvParameterSpec vi = new IvParameterSpec(viBytes);
-
       String plaintext = CryptoUtils.decifrarAES(cipherTextB64, aesKey, vi);
-      return plaintext;
 
+      System.out.println("  [LOG-SEGURANÇA Recebimento] 5. Mensagem decifrada: \"" + plaintext + "\"");
+
+      return plaintext;
     } catch (Exception e) {
       System.err.println("[SEGURANÇA] Erro na decifragem: " + e.getMessage() + ". MENSAGEM DESCARTADA.");
       return null; // Descarta se houver qualquer erro de criptografia
@@ -160,12 +167,15 @@ public class ClientHandler extends Thread {
 
   // Cifra, assina (HMAC) e envia uma mensagem em texto puro para um cliente.
   private void secureSend(String plaintext, PrintWriter writer) throws Exception {
-    // Gera um NOVO VI (Vetor de Inicialização) para cada mensagem
+
+    System.out.println("\n  [LOG-SEGURANÇA Envio] Mensagem original: \"" + plaintext + "\"");
+    System.out.println("  [LOG-SEGURANÇA Envio] 1. Gerando novo VI (Vetor de Inicialização)...");
+
     IvParameterSpec vi = CryptoUtils.gerarVI();
     byte[] viBytes = vi.getIV();
-
-    // Cifra a mensagem (AES)
     String cipherTextB64 = CryptoUtils.cifrarAES(plaintext, aesKey, vi);
+
+    System.out.println("  [LOG-SEGURANÇA Envio] 2. Cifrando com AES-CBC ->: " + cipherTextB64);
 
     // Calcula o HMAC (Autenticidade) da *mensagem cifrada*
     byte[] hmacBytes = CryptoUtils.calcularHmacSha256(hmacKey,
@@ -174,6 +184,9 @@ public class ClientHandler extends Thread {
     // Converte VI e HMAC para Base64 para envio como string
     String viB64 = Base64.getEncoder().encodeToString(viBytes);
     String hmacB64 = Base64.getEncoder().encodeToString(hmacBytes);
+
+    System.out.println("  [LOG-SEGURANÇA Envio] 3. Calculando HMAC do texto cifrado ->: " + hmacB64);
+    System.out.println("  [LOG-SEGURANÇA Envio] 4. Enviando 3 linhas (Cifra, HMAC, VI)...");
 
     // Envia as 3 partes, uma por linha
     writer.println(cipherTextB64);
