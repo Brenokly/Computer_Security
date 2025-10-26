@@ -38,6 +38,7 @@ public class CryptoUtils {
     // Verifica HMAC de forma segura (tempo constante).
     public static boolean checarHmac(byte[] chave, byte[] bytesMensagem, byte[] hmacRecebido) throws Exception {
         byte[] hmacCalculado = calcularHmacSha256(chave, bytesMensagem);
+        System.out.println("  [LOG-SEGURANÇA Recebimento Encapsulado]    > HMAC Calculado: " + bytes2Hex(hmacCalculado));
         return MessageDigest.isEqual(hmacCalculado, hmacRecebido);
     }
 
@@ -127,10 +128,8 @@ public class CryptoUtils {
             String viB64 = tokenizer.nextToken();
 
             System.out.println("\n  [LOG-SEGURANÇA Recebimento Encapsulado] 1. Recebido pacote encapsulado.");
-            System.out.println(
-                    "  [LOG-SEGURANÇA Recebimento Encapsulado]    > Cifra: " + cipherTextB64);
-            System.out.println(
-                    "  [LOG-SEGURANÇA Recebimento Encapsulado]    > HMAC:  " + hmacB64);
+            System.out.println("  [LOG-SEGURANÇA Recebimento Encapsulado]    > Cifra: " + cipherTextB64);
+            System.out.println("  [LOG-SEGURANÇA Recebimento Encapsulado]    > HMAC:  " + hmacB64);
             System.out.println("  [LOG-SEGURANÇA Recebimento Encapsulado] 2. Verificando HMAC...");
 
             byte[] hmacRecebido = Base64.getDecoder().decode(hmacB64);
@@ -140,8 +139,7 @@ public class CryptoUtils {
                     hmacRecebido);
 
             if (!hmacValido) {
-                System.err
-                        .println("  [LOG-SEGURANÇA Recebimento Encapsulado] 3. FALHA! HMACs não conferem. PACOTE DESCARTADO.");
+                System.err.println("  [LOG-SEGURANÇA Recebimento Encapsulado] 3. FALHA! HMACs não conferem. PACOTE DESCARTADO.");
                 return null;
             }
 

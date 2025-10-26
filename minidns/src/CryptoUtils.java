@@ -32,6 +32,7 @@ public class CryptoUtils {
   // Verifica HMAC de forma segura (tempo constante).
   public static boolean checarHmac(byte[] chave, byte[] bytesMensagem, byte[] hmacRecebido) throws Exception {
     byte[] hmacCalculado = calcularHmacSha256(chave, bytesMensagem);
+    System.out.println("  [LOG-SEGURANÇA Recebimento Encapsulado]    > HMAC Calculado: " + bytes2Hex(hmacCalculado));
     return MessageDigest.isEqual(hmacCalculado, hmacRecebido);
   }
 
