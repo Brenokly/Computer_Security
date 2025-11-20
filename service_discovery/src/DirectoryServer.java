@@ -1,3 +1,4 @@
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -7,9 +8,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Questão 2: Servidor de Diretório
- * Escuta por conexões e inicia Threads (DirectoryHandler)
- * para lidar com Clientes e Servidores de Calculadora.
+ * Questão 2: Servidor de Diretório Escuta por conexões e inicia Threads
+ * (DirectoryHandler) para lidar com Clientes e Servidores de Calculadora.
  */
 public class DirectoryServer {
 

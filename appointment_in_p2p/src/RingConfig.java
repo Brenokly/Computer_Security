@@ -1,3 +1,4 @@
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -7,7 +8,7 @@ public class RingConfig {
 
     private static final Map<Integer, Integer> NODE_PORTS = new HashMap<>();
     private static final Map<Integer, String> SUCCESSOR_ADDRESSES = new HashMap<>();
-    private static final Map<Integer, String> PREDECESSOR_ADDRESSES = new HashMap<>(); 
+    private static final Map<Integer, String> PREDECESSOR_ADDRESSES = new HashMap<>();
 
     static {
         int basePort = 9000;
