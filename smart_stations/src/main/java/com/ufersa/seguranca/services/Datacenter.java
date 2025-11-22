@@ -15,27 +15,24 @@ import com.ufersa.seguranca.model.Mensagem;
 import com.ufersa.seguranca.util.Constantes;
 import com.ufersa.seguranca.util.ImplAES;
 import com.ufersa.seguranca.util.ImplRSA;
+import com.ufersa.seguranca.util.JwtService;
 import com.ufersa.seguranca.util.Util;
 
 public class Datacenter {
 
     private static ImplRSA rsa;
-    // Banco de dados em memória thread-safe
     private static final List<DadosSensor> bancoDados = Collections.synchronizedList(new ArrayList<>());
 
     public static void main(String[] args) throws Exception {
         System.out.println("=================================================");
         System.out.println("[CLOUD] Inicializando Datacenter...");
-
-        System.out.print("[INIT] Gerando par de chaves RSA... ");
         rsa = new ImplRSA();
-        System.out.println("OK.");
-
         registrarNoDiscovery();
+        sincronizarChaveJwt("CLOUD");
 
         try (ServerSocket serverSocket = new ServerSocket(Constantes.PORTA_DATACENTER_TCP)) {
             System.out.println("[CLOUD] Servidor rodando na porta TCP " + Constantes.PORTA_DATACENTER_TCP);
-            System.out.println("[CLOUD] Aguardando dados da Borda e requisicoes de Clientes...");
+            System.out.println("[CLOUD] Aguardando conexoes...");
             System.out.println("=================================================");
 
             while (true) {
@@ -46,14 +43,28 @@ public class Datacenter {
     }
 
     private static void registrarNoDiscovery() {
-        System.out.print("[INIT] Registrando chave publica no Discovery... ");
         try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-
             out.writeObject("REGISTRAR_CHAVE:CLOUD:" + rsa.getChavePublicaBase64());
             in.readObject();
-            System.out.println("OK.");
+            System.out.println("[INIT] Registrado no Discovery.");
         } catch (Exception e) {
-            System.out.println("FALHA (" + e.getMessage() + ")");
+            System.out.println("[INIT] Falha registro: " + e.getMessage());
+        }
+    }
+
+    private static void sincronizarChaveJwt(String meuNome) {
+        try {
+            String[] dadosAuth = buscarServico("AUTH");
+            try (Socket socket = new Socket(dadosAuth[0].split(":")[0], Integer.parseInt(dadosAuth[0].split(":")[1])); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+
+                out.writeObject("SOLICITAR_CHAVE_JWT:" + meuNome);
+                String chaveCifradaBase64 = (String) in.readObject();
+                byte[] chaveJwtBytes = rsa.decifrarChaveSimetrica(Base64.getDecoder().decode(chaveCifradaBase64));
+                JwtService.setChaveMestra(Base64.getEncoder().encodeToString(chaveJwtBytes));
+                System.out.println("[INIT] Chave JWT Sincronizada.");
+            }
+        } catch (Exception e) {
+            System.out.println("[INIT] Falha sync JWT: " + e.getMessage());
         }
     }
 
@@ -63,119 +74,89 @@ public class Datacenter {
             Object obj = in.readObject();
             if (obj instanceof Mensagem msg) {
                 String origem = msg.getIdOrigem();
-                System.out.print("[TCP] Msg recebida de " + origem + " | Decifrando... ");
+                System.out.print("[TCP] Msg de " + origem + "... ");
 
-                // 1. Decifrar Chave Simétrica (Híbrido)
-                byte[] chaveAesBytes = rsa.decifrarChaveSimetrica(msg.getChaveSimetricaCifrada());
-                ImplAES aes = new ImplAES(chaveAesBytes);
-
-                // 2. Decifrar Conteúdo
-                String conteudo = aes.decifrar(msg.getConteudoCifrado());
-
-                // 3. Validar Integridade (HMAC) - OBRIGATÓRIO
-                byte[] hmacCalculado = Util.calcularHmacSha256(chaveAesBytes, conteudo.getBytes());
-                byte[] hmacRecebido = Base64.getDecoder().decode(msg.getHmac());
-
-                if (!java.security.MessageDigest.isEqual(hmacCalculado, hmacRecebido)) {
-                    System.out.println("FALHA DE INTEGRIDADE (HMAC invalido). Conexão encerrada.");
+                if (JwtService.validarToken(msg.getTokenJwt()) == null) {
+                    System.out.println("TOKEN INVALIDO/EXPIRADO.");
                     return;
                 }
-                System.out.println("Segurança OK.");
 
-                // 4. Processar Tipo de Mensagem
+                byte[] chaveAesBytes = rsa.decifrarChaveSimetrica(msg.getChaveSimetricaCifrada());
+                ImplAES aes = new ImplAES(chaveAesBytes);
+                String conteudo = aes.decifrar(msg.getConteudoCifrado());
+
+                byte[] hmacCalculado = Util.calcularHmacSha256(chaveAesBytes, conteudo.getBytes());
+                if (!java.security.MessageDigest.isEqual(hmacCalculado, Base64.getDecoder().decode(msg.getHmac()))) {
+                    System.out.println("FALHA DE INTEGRIDADE.");
+                    return;
+                }
+                System.out.print("Segura. ");
+
                 if (msg.getTipo() == Constantes.TIPO_DADOS_SENSOR) {
                     DadosSensor dados = DadosSensor.fromString(conteudo);
                     bancoDados.add(dados);
-                    System.out.println("   -> [DB] Dado persistido. Sensor: " + dados.getIdDispositivo() + " | Temp: " + dados.getTemperatura());
+                    System.out.println("-> [DB] Salvo: " + dados.getIdDispositivo());
+
+                    // CORREÇÃO 3: Enviar confirmação para a Borda não travar
+                    out.writeObject("RECEBIDO");
 
                 } else if (msg.getTipo() == Constantes.TIPO_RELATORIO_REQ) {
-                    System.out.println("   -> [API] Processando solicitacao: " + conteudo);
+                    System.out.println("-> [API] Req Cliente.");
                     String resposta = processarMenuCliente(conteudo);
-
-                    // Responder cifrado
                     String respCifrada = aes.cifrar(resposta);
                     out.writeObject(respCifrada);
-                    System.out.println("   -> [API] Resposta enviada ao Cliente.");
                 }
             }
         } catch (Exception e) {
-            System.out.println("[ERRO] " + e.getMessage());
+            System.out.println("[ERRO CONEXAO] " + e.getMessage());
         }
     }
 
     private static String processarMenuCliente(String comando) {
         StringBuilder sb = new StringBuilder();
-
-        if (null == comando) {
-            sb.append("Comando nao reconhecido.");
-        } else {
-            switch (comando) {
-                case "GET /relatorios" -> {
-                    sb.append("=== RELATORIOS ESTATISTICOS (5 RELATORIOS) ===\n");
-
-                    // Relatório 1: Volume de Dados
-                    sb.append("1. Volume de Dados:\n");
-                    sb.append("   - Total de Registros: ").append(bancoDados.size()).append("\n");
-
-                    // Relatório 2: Média Térmica
-                    double mediaTemp = bancoDados.stream().mapToDouble(DadosSensor::getTemperatura).average().orElse(0.0);
-                    sb.append("2. Monitoramento Termico:\n");
-                    sb.append("   - Temperatura Media Global: ").append(String.format("%.2f", mediaTemp)).append(" C\n");
-
-                    // Relatório 3: Poluição
-                    double mediaCo2 = bancoDados.stream().mapToDouble(DadosSensor::getCo2).average().orElse(0.0);
-                    sb.append("3. Controle de Poluicao:\n");
-                    sb.append("   - CO2 Medio: ").append(String.format("%.2f", mediaCo2)).append(" ppm\n");
-
-                    // Relatório 4: Ruído Urbano
-                    long ruidoso = bancoDados.stream().filter(d -> d.getRuido() > 80).count();
-                    sb.append("4. Poluicao Sonora:\n");
-                    sb.append("   - Ocorrencias acima de 80dB: ").append(ruidoso).append("\n");
-
-                    // Relatório 5: Status da Rede
-                    long ativos = bancoDados.stream().map(DadosSensor::getIdDispositivo).distinct().count();
-                    sb.append("5. Rede de Sensores:\n");
-                    sb.append("   - Dispositivos Ativos: ").append(ativos).append("\n");
-                }
-                case "GET /alertas" -> {
-                    sb.append("=== ALERTAS CRITICOS (Tempo Real) ===\n");
-                    List<DadosSensor> criticos = bancoDados.stream()
-                            .filter(d -> d.getTemperatura() > 40 || d.getCo2() > 1000)
-                            .collect(Collectors.toList());
-                    if (criticos.isEmpty()) {
-                        sb.append("Nenhum alerta critico registrado no momento.\n");
-                    } else {
-                        for (DadosSensor d : criticos) {
-                            sb.append("[ALERTA] ID: ").append(d.getIdDispositivo())
-                                    .append(" | Temp: ").append(d.getTemperatura())
-                                    .append(" | CO2: ").append(d.getCo2()).append("\n");
-                        }
-                    }
-                }
-                case "GET /previsoes" -> {
-                    sb.append("=== PREVISOES AMBIENTAIS (IA) ===\n");
-                    double tendenciaPm25 = bancoDados.stream().mapToDouble(DadosSensor::getPm25).average().orElse(0.0);
-                    double tendenciaUv = bancoDados.stream().mapToDouble(DadosSensor::getUv).average().orElse(0.0);
-
-                    sb.append("Analise baseada em ").append(bancoDados.size()).append(" amostras:\n");
-
-                    if (tendenciaPm25 > 30) {
-                        sb.append("-> AR: Alta probabilidade de chuva acida ou poluicao severa nas proximas 4h.\n");
-                    } else {
-                        sb.append("-> AR: Qualidade do ar deve permanecer estavel.\n");
-                    }
-
-                    if (tendenciaUv > 6) {
-                        sb.append("-> SAUDE: Risco de radiacao UV alto para amanha. Recomenda-se alerta a populacao.\n");
-                    } else {
-                        sb.append("-> SAUDE: Niveis de radiacao seguros.\n");
-                    }
-                }
-                default ->
-                    sb.append("Comando nao reconhecido.");
-            }
+        if (comando == null) {
+            return "Erro";
         }
 
+        switch (comando) {
+            case "GET /relatorios" -> {
+                sb.append("=== RELATORIOS GERAIS ===\n");
+                sb.append("Total de Registros: ").append(bancoDados.size()).append("\n");
+                double mediaTemp = bancoDados.stream().mapToDouble(DadosSensor::getTemperatura).average().orElse(0.0);
+                sb.append("Temp Media: ").append(String.format("%.2f", mediaTemp)).append(" C\n");
+                long ativos = bancoDados.stream().map(DadosSensor::getIdDispositivo).distinct().count();
+                sb.append("Sensores Ativos: ").append(ativos).append("\n");
+            }
+            case "GET /alertas" -> {
+                sb.append("=== ALERTAS ===\n");
+                List<DadosSensor> criticos = bancoDados.stream()
+                        .filter(d -> d.getTemperatura() > 40).collect(Collectors.toList());
+                if (criticos.isEmpty()) {
+                    sb.append("Sem alertas.\n");
+                } else {
+                    criticos.forEach(d -> sb.append("[ALERTA] ").append(d.getIdDispositivo()).append(" Temp: ").append(d.getTemperatura()).append("\n"));
+                }
+            }
+            case "GET /previsoes" -> {
+                sb.append("=== PREVISOES ===\n");
+                double co2 = bancoDados.stream().mapToDouble(DadosSensor::getCo2).average().orElse(0.0);
+                if (co2 > 800) {
+                    sb.append("Qualidade do ar PESSIMA prevista para tarde.\n");
+                } else {
+                    sb.append("Qualidade do ar estavel.\n");
+                }
+            }
+            default ->
+                sb.append("Comando invalido.");
+        }
         return sb.toString();
+    }
+
+    private static String[] buscarServico(String nome) throws Exception {
+        try (Socket s = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+            out.writeObject("BUSCAR:" + nome);
+            String resp = (String) in.readObject();
+            return resp.split("\\|");
+        }
     }
 }

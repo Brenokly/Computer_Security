@@ -27,23 +27,19 @@ public class ServidorBorda {
     public static void main(String[] args) throws Exception {
         System.out.println("=== INICIALIZANDO SERVIDOR DE BORDA (EDGE) ===");
         rsa = new ImplRSA();
-
         registrarNoDiscovery();
+        sincronizarChaveJwt("BORDA");
         buscarChaveCloud();
 
-        try (DatagramSocket serverSocket = new DatagramSocket(Constantes.PORTA_BORDA_UDP);) {
+        try (DatagramSocket serverSocket = new DatagramSocket(Constantes.PORTA_BORDA_UDP)) {
             System.out.println("[BORDA] Ouvindo UDP na porta " + Constantes.PORTA_BORDA_UDP);
             System.out.println("[BORDA] Aguardando sensores...");
-
             byte[] receiveData = new byte[65535];
 
             while (true) {
                 DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 serverSocket.receive(receivePacket);
-
-                // Log de recebimento bruto
                 System.out.println("\n[UDP] Pacote recebido de: " + receivePacket.getAddress() + ":" + receivePacket.getPort());
-
                 new Thread(() -> processarPacote(receivePacket)).start();
             }
         } catch (Exception e) {
@@ -52,36 +48,50 @@ public class ServidorBorda {
     }
 
     private static void registrarNoDiscovery() {
-        System.out.print("[INIT] Registrando chave publica no Discovery... ");
         try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-
             out.writeObject("REGISTRAR_CHAVE:BORDA:" + rsa.getChavePublicaBase64());
             in.readObject();
-            System.out.println("OK.");
+            System.out.println("[INIT] Chave registrada no Discovery.");
         } catch (Exception e) {
-            System.out.println("FALHA (" + e.getMessage() + ")");
+            System.out.println("[INIT] Falha ao registrar: " + e.getMessage());
+        }
+    }
+
+    private static void sincronizarChaveJwt(String meuNome) {
+        try {
+            String[] dadosAuth = buscarServico("AUTH");
+            try (Socket socket = new Socket(dadosAuth[0].split(":")[0], Integer.parseInt(dadosAuth[0].split(":")[1])); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+
+                out.writeObject("SOLICITAR_CHAVE_JWT:" + meuNome);
+                String chaveCifradaBase64 = (String) in.readObject();
+                byte[] chaveJwtBytes = rsa.decifrarChaveSimetrica(Base64.getDecoder().decode(chaveCifradaBase64));
+                JwtService.setChaveMestra(Base64.getEncoder().encodeToString(chaveJwtBytes));
+                System.out.println("[INIT] Chave JWT sincronizada.");
+            }
+        } catch (Exception e) {
+            System.out.println("[INIT] Erro ao sincronizar chave JWT: " + e.getMessage());
         }
     }
 
     private static void buscarChaveCloud() {
-        System.out.print("[INIT] Buscando chave publica da Cloud... ");
-        try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-
-            out.writeObject("BUSCAR:CLOUD");
-            String resposta = (String) in.readObject();
-
-            if (resposta.startsWith("ERRO")) {
-                System.out.println("NAO ENCONTRADO (Cloud offline?)");
-                return;
-            }
-
-            String b64Key = resposta.split("\\|")[1];
-            byte[] keyBytes = Base64.getDecoder().decode(b64Key);
+        try {
+            String[] dadosCloud = buscarServico("CLOUD");
+            byte[] keyBytes = Base64.getDecoder().decode(dadosCloud[1]);
             chavePublicaCloud = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(keyBytes));
-            System.out.println("OK.");
-
+            System.out.println("[INIT] Chave Publica da Cloud obtida.");
         } catch (Exception e) {
-            System.out.println("ERRO (" + e.getMessage() + ")");
+            System.out.println("[INIT] Erro ao buscar chave Cloud: " + e.getMessage());
+        }
+    }
+
+    private static String[] buscarServico(String nomeServico) throws Exception {
+        try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+            out.writeObject("BUSCAR:" + nomeServico);
+            String resposta = (String) in.readObject();
+            if (resposta.startsWith("ERRO")) {
+                throw new Exception("Servico nao encontrado");
+            }
+            return resposta.split("\\|");
         }
     }
 
@@ -91,43 +101,28 @@ public class ServidorBorda {
             ObjectInputStream ois = new ObjectInputStream(bais);
             Mensagem msg = (Mensagem) ois.readObject();
 
-            System.out.print("[PROCESSAMENTO] Sensor: " + msg.getIdOrigem() + " | Validando JWT... ");
-
-            // 1. Validar JWT
+            System.out.print("[PROCESSAMENTO] Sensor: " + msg.getIdOrigem() + " | Validando... ");
             if (JwtService.validarToken(msg.getTokenJwt()) == null) {
-                System.out.println("FALHA (Token Invalido/Expirado)");
+                System.out.println("TOKEN INVALIDO");
                 return;
             }
-            System.out.println("OK.");
 
-            // 2. Decifrar Hibrido (RSA -> AES)
             byte[] chaveAesBytes = rsa.decifrarChaveSimetrica(msg.getChaveSimetricaCifrada());
             ImplAES aes = new ImplAES(chaveAesBytes);
-
-            // 3. Decifrar Conteudo
             String jsonConteudo = aes.decifrar(msg.getConteudoCifrado());
 
-            // 4. Verificar Integridade (HMAC)
-            System.out.print("[PROCESSAMENTO] Verificando Integridade (HMAC)... ");
             byte[] hmacCalculado = Util.calcularHmacSha256(chaveAesBytes, jsonConteudo.getBytes());
-            String hmacRecebidoStr = msg.getHmac();
-            byte[] hmacRecebidoBytes = Base64.getDecoder().decode(hmacRecebidoStr);
-
-            if (!java.security.MessageDigest.isEqual(hmacCalculado, hmacRecebidoBytes)) {
-                System.out.println("FALHA (HMAC nao confere! Pacote descartado)");
+            if (!java.security.MessageDigest.isEqual(hmacCalculado, Base64.getDecoder().decode(msg.getHmac()))) {
+                System.out.println("HMAC INVALIDO");
                 return;
             }
             System.out.println("OK.");
 
             DadosSensor dados = DadosSensor.fromString(jsonConteudo);
-            System.out.println("[DADOS] " + dados.toString());
-
-            // 5. Alerta Rapido (Edge Computing)
             if (dados.getTemperatura() > 40.0) {
-                System.out.println(">>> [ALERTA BORDA] Temperatura CRITICA detectada: " + dados.getTemperatura() + "C <<<");
+                System.out.println(">>> [ALERTA BORDA] Temp Critica: " + dados.getTemperatura() + "C <<<");
             }
 
-            // 6. Encaminhar para Cloud (TCP + Criptografia Hibrida novamente)
             enviarParaCloud(dados);
 
         } catch (Exception e) {
@@ -137,34 +132,40 @@ public class ServidorBorda {
 
     private static void enviarParaCloud(DadosSensor dados) throws Exception {
         if (chavePublicaCloud == null) {
-            System.out.println("[ALERTA] Tentando reconectar com Cloud para buscar chave...");
             buscarChaveCloud();
-            if (chavePublicaCloud == null) {
-                System.out.println("[ERRO] Impossivel enviar para Cloud: Chave publica nao encontrada.");
-                return;
-            }
         }
 
-        System.out.print("[CLOUD] Encaminhando dados via TCP... ");
         try {
             ImplAES aesEnvio = new ImplAES(192);
             String conteudo = dados.toString();
+
             String conteudoCifrado = aesEnvio.cifrar(conteudo);
             byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaCloud);
             byte[] hmac = Util.calcularHmacSha256(aesEnvio.getChaveBytes(), conteudo.getBytes());
 
             Mensagem msg = new Mensagem(Constantes.TIPO_DADOS_SENSOR, "BORDA");
+
+            // CORREÇÃO 1: Gerar Token Válido para a Borda
+            String tokenBorda = JwtService.gerarToken("BORDA_GATEWAY", "SERVER");
+            msg.setTokenJwt(tokenBorda);
+
             msg.setChaveSimetricaCifrada(chaveSimetricaCifrada);
             msg.setConteudoCifrado(conteudoCifrado);
             msg.setHmac(Base64.getEncoder().encodeToString(hmac));
 
-            // Borda envia sem token ou com token proprio para cloud (simplificado aqui sem token)
-            try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_DATACENTER_TCP); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream())) {
+            System.out.print("[CLOUD] Enviando TCP... ");
+
+            // CORREÇÃO 2: Handshake (Esperar resposta antes de fechar)
+            try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_DATACENTER_TCP); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+
                 out.writeObject(msg);
+                // Espera confirmação para não quebrar a conexão
+                String confirmacao = (String) in.readObject();
+                System.out.println("Confirmado (" + confirmacao + ").");
             }
-            System.out.println("Enviado com sucesso.");
         } catch (Exception e) {
-            System.out.println("FALHA ao conectar com Datacenter (" + e.getMessage() + ")");
+            System.out.println("FALHA (" + e.getMessage() + ")");
+            chavePublicaCloud = null;
         }
     }
 }
