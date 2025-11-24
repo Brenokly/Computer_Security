@@ -1,6 +1,7 @@
 package com.ufersa.seguranca.services;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
@@ -19,31 +20,100 @@ import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.JwtService;
 import com.ufersa.seguranca.util.Util;
 
+/**
+ * SERVIDOR DE BORDA (Edge Gateway) * Responsabilidade: Intermediário entre
+ * dispositivos (UDP) e Nuvem (TCP). Funcionalidades de Segurança e Rede: 1.
+ * Recebimento UDP: Aceita dados de sensores. 2. Validação de Segurança:
+ * Verifica validade do JWT e integridade HMAC do pacote. 3. Descriptografia
+ * Híbrida: Usa sua chave Privada RSA para abrir o envelope e acessar os dados.
+ * 4. Edge Computing: Realiza análise preliminar (ex: alertas de temperatura)
+ * antes do envio. 5. Re-encriptação e TCP Persistente: Cria um novo envelope
+ * digital (com a chave da Cloud) e encaminha via TCP.
+ */
 public class ServidorBorda {
 
     private static ImplRSA rsa;
     private static PublicKey chavePublicaCloud;
 
+    private static Socket socketCloud;
+    private static ObjectOutputStream outCloud;
+
     public static void main(String[] args) throws Exception {
-        System.out.println("=== INICIALIZANDO SERVIDOR DE BORDA (EDGE) ===");
+        System.out.println("=== BORDA (PERSISTENTE) ===");
         rsa = new ImplRSA();
         registrarNoDiscovery();
         sincronizarChaveJwt("BORDA");
         buscarChaveCloud();
 
         try (DatagramSocket serverSocket = new DatagramSocket(Constantes.PORTA_BORDA_UDP)) {
-            System.out.println("[BORDA] Ouvindo UDP na porta " + Constantes.PORTA_BORDA_UDP);
-            System.out.println("[BORDA] Aguardando sensores...");
-            byte[] receiveData = new byte[65535];
+            System.out.println("[BORDA] UDP Ativo. Conectando a Cloud...");
+            garantirConexaoCloud(); // Abre a conexão TCP logo no início
 
+            byte[] receiveData = new byte[65535];
             while (true) {
                 DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 serverSocket.receive(receivePacket);
-                System.out.println("\n[UDP] Pacote recebido de: " + receivePacket.getAddress() + ":" + receivePacket.getPort());
                 new Thread(() -> processarPacote(receivePacket)).start();
             }
+        }
+    }
+
+    private static synchronized void garantirConexaoCloud() {
+        try {
+            if (socketCloud == null || socketCloud.isClosed() || !socketCloud.isConnected()) {
+                System.out.print("[TCP] Conectando a Nuvem... ");
+                socketCloud = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_DATACENTER_TCP);
+                outCloud = new ObjectOutputStream(socketCloud.getOutputStream());
+                System.out.println("CONECTADO.");
+            }
+        } catch (IOException e) {
+            System.out.println("FALHA CONEXAO (" + e.getMessage() + ")");
+            socketCloud = null;
+        }
+    }
+
+    /*
+     * Encaminha dados para a Cloud via conexão TCP Persistente.
+     * Segurança: Gera um novo Token JWT (assinando como Gateway) e aplica
+     * nova camada de Criptografia Híbrida (AES efêmero + RSA da Cloud) + HMAC.
+     */
+    private static void enviarParaCloud(DadosSensor dados) throws Exception {
+        if (chavePublicaCloud == null) {
+            buscarChaveCloud();
+        }
+        garantirConexaoCloud(); // Reconecta se tiver caído
+
+        if (outCloud == null) {
+            return; // Sem nuvem, descarta
+        }
+        try {
+            // Criptografia Híbrida (AES novo a cada mensagem, mas mesmo socket)
+            ImplAES aesEnvio = new ImplAES(192);
+            String conteudoCifrado = aesEnvio.cifrar(dados.toString());
+            byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaCloud);
+            byte[] hmac = Util.calcularHmacSha256(aesEnvio.getChaveBytes(), dados.toString().getBytes());
+
+            Mensagem msg = new Mensagem(Constantes.TIPO_DADOS_SENSOR, "BORDA");
+            msg.setTokenJwt(JwtService.gerarToken("BORDA_GATEWAY", "SERVER"));
+            msg.setChaveSimetricaCifrada(chaveSimetricaCifrada);
+            msg.setConteudoCifrado(conteudoCifrado);
+            msg.setHmac(Base64.getEncoder().encodeToString(hmac));
+
+            // Envio no túnel já aberto
+            synchronized (outCloud) { // Sincronizado para threads não atropelarem
+                outCloud.writeObject(msg);
+                outCloud.flush();
+                outCloud.reset();
+            }
+            System.out.println("[CLOUD] Enviado.");
+
         } catch (Exception e) {
-            System.out.println("[ERRO FATAL] " + e.getMessage());
+            System.out.println("[ERRO ENVIO] " + e.getMessage());
+            try {
+                socketCloud.close();
+            } catch (IOException ex) {
+            }
+            socketCloud = null; // Força reconexão na próxima
         }
     }
 
@@ -127,45 +197,6 @@ public class ServidorBorda {
 
         } catch (Exception e) {
             System.out.println("[ERRO PROCESSAMENTO] " + e.getMessage());
-        }
-    }
-
-    private static void enviarParaCloud(DadosSensor dados) throws Exception {
-        if (chavePublicaCloud == null) {
-            buscarChaveCloud();
-        }
-
-        try {
-            ImplAES aesEnvio = new ImplAES(192);
-            String conteudo = dados.toString();
-
-            String conteudoCifrado = aesEnvio.cifrar(conteudo);
-            byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaCloud);
-            byte[] hmac = Util.calcularHmacSha256(aesEnvio.getChaveBytes(), conteudo.getBytes());
-
-            Mensagem msg = new Mensagem(Constantes.TIPO_DADOS_SENSOR, "BORDA");
-
-            // CORREÇÃO 1: Gerar Token Válido para a Borda
-            String tokenBorda = JwtService.gerarToken("BORDA_GATEWAY", "SERVER");
-            msg.setTokenJwt(tokenBorda);
-
-            msg.setChaveSimetricaCifrada(chaveSimetricaCifrada);
-            msg.setConteudoCifrado(conteudoCifrado);
-            msg.setHmac(Base64.getEncoder().encodeToString(hmac));
-
-            System.out.print("[CLOUD] Enviando TCP... ");
-
-            // CORREÇÃO 2: Handshake (Esperar resposta antes de fechar)
-            try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_DATACENTER_TCP); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-
-                out.writeObject(msg);
-                // Espera confirmação para não quebrar a conexão
-                String confirmacao = (String) in.readObject();
-                System.out.println("Confirmado (" + confirmacao + ").");
-            }
-        } catch (Exception e) {
-            System.out.println("FALHA (" + e.getMessage() + ")");
-            chavePublicaCloud = null;
         }
     }
 }

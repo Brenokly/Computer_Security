@@ -10,6 +10,12 @@ import java.util.Base64;
 
 import javax.crypto.Cipher;
 
+/**
+ * Implementação de Criptografia Assimétrica (RSA).
+ * Padrão: RSA de 1024 bits.
+ * Uso: Troca de chaves (Key Transport). Cifra a chave AES para criar o "Envelope Digital".
+ */
+
 public class ImplRSA {
 
     private PublicKey chavePublica;

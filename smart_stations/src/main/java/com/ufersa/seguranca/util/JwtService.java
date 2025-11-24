@@ -13,6 +13,12 @@ import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
 
+/**
+ * Serviço de Tokens JWT (JSON Web Token).
+ * Segurança: Utiliza uma chave mestra dinâmica (gerada na inicialização do Auth)
+ * e sincronizada via rede protegida por RSA, evitando chaves hardcoded no código.
+ */
+
 public class JwtService {
 
     private static Key CHAVE;

@@ -15,6 +15,16 @@ import com.ufersa.seguranca.util.ImplAES;
 import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.Util;
 
+/**
+ * CLIENTE (Aplicação de Usuário)
+ * * Responsabilidade: Interface para consulta de dados e relatórios.
+ * Segurança:
+ * 1. Autenticação Híbrida: Envia credenciais cifradas via túnel AES+RSA para obter JWT.
+ * 2. Comunicação Segura: Todas as requisições ao Datacenter (GET /relatorios, etc.)
+ * são encapsuladas em Envelopes Digitais (Criptografia Híbrida) e assinadas com HMAC.
+ * 3. Decriptação: Recebe as respostas do servidor cifradas e as exibe em texto claro.
+ */
+
 public class Cliente {
 
     private static String tokenJwt;

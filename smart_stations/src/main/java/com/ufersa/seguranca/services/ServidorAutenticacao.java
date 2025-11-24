@@ -19,6 +19,15 @@ import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.JwtService;
 import com.ufersa.seguranca.util.Util;
 
+/**
+ * SERVIDOR DE AUTENTICAÇÃO
+ * * Responsabilidade: Gerenciar identidades, validar credenciais e emitir tokens de sessão.
+ * Tecnologias de Segurança:
+ * 1. PBKDF2 com Salt (Prática 8.1): Armazenamento seguro de senhas, resistente a Rainbow Tables.
+ * 2. Criptografia Híbrida (RSA + AES): Descriptografa as credenciais recebidas protegidas por envelope digital.
+ * 3. HMAC-SHA256: Verifica a integridade do pacote de login antes de processar.
+ * 4. JWT (JSON Web Token): Gera tokens assinados com chave secreta dinâmica para autenticação stateless.
+ */
 public class ServidorAutenticacao {
 
     private static final Map<String, String> bancoUsuarios = new HashMap<>();
@@ -77,6 +86,11 @@ public class ServidorAutenticacao {
         }
     }
 
+    /*
+     * Processa requisições seguras:
+     * 1. Login: Recebe envelope digital, valida HMAC, decifra AES, valida Hash da senha e retorna JWT cifrado.
+     * 2. Sincronização: Distribui a Chave Mestra do JWT (AES-256) cifrada com RSA para Borda e Cloud.
+    */
     private static void processarRequisicao(Socket socket) {
         try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 

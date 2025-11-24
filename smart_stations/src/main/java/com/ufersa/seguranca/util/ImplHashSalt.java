@@ -7,6 +7,12 @@ import java.security.SecureRandom;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
 
+/**
+ * Hashing de Senhas Seguro.
+ * Algoritmo: PBKDF2WithHmacSHA1.
+ * Função: Aplica Salt e múltiplas iterações para proteger senhas contra ataques de força bruta e rainbow tables.
+ */
+
 public class ImplHashSalt {
 
     public static String getHashSenhaSegura(String senha) throws Exception {

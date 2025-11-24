@@ -2,6 +2,15 @@ package com.ufersa.seguranca.model;
 
 import java.io.Serializable;
 
+/**
+ * DTO (Data Transfer Object) para o Protocolo de Segurança.
+ * Estrutura do Envelope Digital:
+ * 1. conteudoCifrado: Dados criptografados com AES.
+ * 2. chaveSimetricaCifrada: Chave AES criptografada com RSA.
+ * 3. hmac: Assinatura de integridade dos dados originais.
+ * 4. tokenJwt: Prova de autenticação (Sessão).
+ */
+
 public class Mensagem implements Serializable {
 
     private final int tipo;

@@ -1,10 +1,9 @@
 package com.ufersa.seguranca.client;
 
-import static java.lang.Thread.sleep;
-
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import static java.lang.Thread.sleep;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -21,6 +20,20 @@ import com.ufersa.seguranca.util.Constantes;
 import com.ufersa.seguranca.util.ImplAES;
 import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.Util;
+
+/**
+ * DISPOSITIVO SENSOR (IoT Client)
+ * * Responsabilidade: Coleta de dados ambientais e envio seguro.
+ * Ciclo de Segurança:
+ * 1. Descoberta: Consulta o Servidor de Localização.
+ * 2. Autenticação: Realiza login seguro (Híbrido) para obter Token JWT.
+ * 3. Coleta: Gera dados aleatórios dentro de faixas reais (temperatura, CO2, etc).
+ * 4. Envio Seguro:
+ * - Gera chave AES-192 aleatória por pacote (Session Key).
+ * - Cifra os dados com AES.
+ * - Cifra a chave AES com a RSA Pública da Borda (Envelope Digital).
+ * - Assina com HMAC-SHA256 e envia via UDP.
+*/
 
 public class Dispositivo {
 

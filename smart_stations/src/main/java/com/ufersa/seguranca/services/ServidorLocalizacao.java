@@ -8,6 +8,15 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.ufersa.seguranca.util.Constantes;
 
+/**
+ * SERVIDOR DE LOCALIZAÇÃO
+ * * Responsabilidade: Atua como um diretório central para a arquitetura distribuída.
+ * Segurança:
+ * 1. Armazena e distribui os endereços IP/Porta dos serviços (Auth, Borda, Cloud).
+ * 2. Atua como uma PKI (Public Key Infrastructure) simplificada, distribuindo
+ * as Chaves Públicas RSA dos componentes para permitir a Criptografia Híbrida.
+ */
+
 public class ServidorLocalizacao {
 
     private static final ConcurrentHashMap<String, String> registroServicos = new ConcurrentHashMap<>();

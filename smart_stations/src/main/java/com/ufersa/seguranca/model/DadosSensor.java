@@ -26,6 +26,8 @@ public class DadosSensor implements Serializable {
         gerarDadosAleatorios();
     }
 
+    // Esse método gera dados aleatórios para simular leituras dos sensores
+    // Valores são baseados em faixas típicas de poluentes e condições ambientais
     private void gerarDadosAleatorios() {
         this.co2 = ThreadLocalRandom.current().nextDouble(350.0, 1200.0);
         this.co = ThreadLocalRandom.current().nextDouble(0.1, 15.0);
@@ -45,6 +47,7 @@ public class DadosSensor implements Serializable {
                 idDispositivo, timestamp, co2, co, no2, so2, pm25, pm10, temperatura, umidade, ruido, uv);
     }
 
+    // Método estático para criar um objeto DadosSensor a partir de uma string formatada
     public static DadosSensor fromString(String linha) {
         String[] parts = linha.split("\\|");
         DadosSensor d = new DadosSensor(parts[0]);
@@ -84,5 +87,9 @@ public class DadosSensor implements Serializable {
 
     public double getPm25() {
         return pm25;
+    }
+
+    public double getUmidade() {
+        return umidade;
     }
 }
