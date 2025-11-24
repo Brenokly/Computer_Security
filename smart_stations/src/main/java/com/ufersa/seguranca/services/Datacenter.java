@@ -21,12 +21,13 @@ import com.ufersa.seguranca.util.Util;
 
 /**
  * DATACENTER / CLOUD (Storage & Analytics) * Responsabilidade: Armazenamento
- * centralizado e processamento de relatórios. Segurança: 1. Validação Rigorosa:
- * Rejeita conexões sem Token JWT válido ou com falha de integridade (HMAC). 2.
- * Conexão Persistente: Gerencia threads dedicadas para conexões TCP de longa
- * duração. 3. Decriptação Final: Ponto final da criptografia híbrida, onde o
- * dado é exposto apenas na memória. 4. Analytics: Gera os 5 relatórios
- * estatísticos exigidos baseados no banco em memória.
+ * centralizado e processamento de relatórios. Segurança:
+ * 1. Validação: Rejeita conexões sem Token JWT válido ou com falha de integridade (HMAC).
+ * 2. Conexão Persistente: Gerencia threads dedicadas para conexões TCP de longa
+ * duração.
+ * 3. Decriptação Final: Ponto final da criptografia híbrida, onde o
+ * dado é exposto apenas na memória.
+ * 4. Analytics: Gera os 5 relatórios estatísticos exigidos baseados no banco em memória.
  */
 public class Datacenter {
 

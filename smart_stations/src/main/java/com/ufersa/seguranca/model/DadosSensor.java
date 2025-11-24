@@ -5,6 +5,10 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.concurrent.ThreadLocalRandom;
 
+/*
+ * Classe que representa os dados coletados pelos sensores ambientais.
+*/
+
 public class DadosSensor implements Serializable {
 
     private final String idDispositivo;

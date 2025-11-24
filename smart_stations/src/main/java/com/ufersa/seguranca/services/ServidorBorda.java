@@ -22,13 +22,14 @@ import com.ufersa.seguranca.util.Util;
 
 /**
  * SERVIDOR DE BORDA (Edge Gateway) * Responsabilidade: Intermediário entre
- * dispositivos (UDP) e Nuvem (TCP). Funcionalidades de Segurança e Rede: 1.
- * Recebimento UDP: Aceita dados de sensores. 2. Validação de Segurança:
- * Verifica validade do JWT e integridade HMAC do pacote. 3. Descriptografia
- * Híbrida: Usa sua chave Privada RSA para abrir o envelope e acessar os dados.
+ * dispositivos (UDP) e Nuvem (TCP). Funcionalidades de Segurança e Rede:
+ * 1. Recebimento UDP: Aceita dados de sensores.
+ * 2. Validação de Segurança: Verifica validade do JWT e integridade HMAC do pacote.
+ * 3. Descriptografia Híbrida: Usa sua chave Privada RSA para abrir o envelope e acessar os dados.
  * 4. Edge Computing: Realiza análise preliminar (ex: alertas de temperatura)
- * antes do envio. 5. Re-encriptação e TCP Persistente: Cria um novo envelope
- * digital (com a chave da Cloud) e encaminha via TCP.
+ * antes do envio.
+ * 5. Re-encriptação e TCP Persistente: Cria um novo envelope digital
+ * (com a chave da Cloud) e encaminha via TCP.
  */
 public class ServidorBorda {
 

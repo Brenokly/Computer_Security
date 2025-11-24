@@ -23,7 +23,7 @@ import com.ufersa.seguranca.util.Util;
  * SERVIDOR DE AUTENTICAÇÃO
  * * Responsabilidade: Gerenciar identidades, validar credenciais e emitir tokens de sessão.
  * Tecnologias de Segurança:
- * 1. PBKDF2 com Salt (Prática 8.1): Armazenamento seguro de senhas, resistente a Rainbow Tables.
+ * 1. PBKDF2 com Salt: Armazenamento seguro de senhas, resistente a Rainbow Tables.
  * 2. Criptografia Híbrida (RSA + AES): Descriptografa as credenciais recebidas protegidas por envelope digital.
  * 3. HMAC-SHA256: Verifica a integridade do pacote de login antes de processar.
  * 4. JWT (JSON Web Token): Gera tokens assinados com chave secreta dinâmica para autenticação stateless.

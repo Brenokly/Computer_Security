@@ -5,6 +5,10 @@ import java.util.zip.CRC32;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+/*
+ * Métodos utilitários para cálculos de integridade e autenticação.
+*/
+
 public class Util {
 
     public static long calcularCRC32(byte[] bytesMensagem) {
