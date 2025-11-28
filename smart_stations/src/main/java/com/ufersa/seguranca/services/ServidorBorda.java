@@ -88,7 +88,7 @@ public class ServidorBorda {
             return; // Sem nuvem, descarta
         }
         try {
-            // Criptografia Híbrida (AES novo a cada mensagem, mas mesmo socket)
+            // usando Criptografia Híbrida
             ImplAES aesEnvio = new ImplAES(192);
             String conteudoCifrado = aesEnvio.cifrar(dados.toString());
             byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaCloud);
@@ -100,8 +100,7 @@ public class ServidorBorda {
             msg.setConteudoCifrado(conteudoCifrado);
             msg.setHmac(Base64.getEncoder().encodeToString(hmac));
 
-            // Envio no túnel já aberto
-            synchronized (outCloud) { // Sincronizado para threads não atropelarem
+            synchronized (outCloud) {
                 outCloud.writeObject(msg);
                 outCloud.flush();
                 outCloud.reset();
@@ -194,7 +193,7 @@ public class ServidorBorda {
                 System.out.println(">>> [ALERTA BORDA] Temp Critica: " + dados.getTemperatura() + "C <<<");
             }
 
-            enviarParaCloud(dados);
+          enviarParaCloud(dados);
 
         } catch (Exception e) {
             System.out.println("[ERRO PROCESSAMENTO] " + e.getMessage());

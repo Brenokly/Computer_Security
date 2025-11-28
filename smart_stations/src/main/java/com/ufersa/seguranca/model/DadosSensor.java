@@ -8,7 +8,6 @@ import java.util.concurrent.ThreadLocalRandom;
 /*
  * Classe que representa os dados coletados pelos sensores ambientais.
 */
-
 public class DadosSensor implements Serializable {
 
     private final String idDispositivo;
@@ -51,7 +50,6 @@ public class DadosSensor implements Serializable {
                 idDispositivo, timestamp, co2, co, no2, so2, pm25, pm10, temperatura, umidade, ruido, uv);
     }
 
-    // Método estático para criar um objeto DadosSensor a partir de uma string formatada
     public static DadosSensor fromString(String linha) {
         String[] parts = linha.split("\\|");
         DadosSensor d = new DadosSensor(parts[0]);

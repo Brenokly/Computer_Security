@@ -28,9 +28,7 @@ public class ImplArgon2 {
     }
   }
 
-  /**
-   * Verifica se a senha corresponde ao hash Argon2 armazenado.
-   */
+  // Verifica se a senha corresponde ao hash Argon2 armazenado.
   public static boolean verificarSenha(String hash, String senha) {
     return argon2.verify(hash, senha.toCharArray());
   }

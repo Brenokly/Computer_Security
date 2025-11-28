@@ -19,10 +19,14 @@ import com.ufersa.seguranca.util.Util;
  * CLIENTE (Aplicação de Usuário)
  * * Responsabilidade: Interface para consulta de dados e relatórios.
  * Segurança:
- * 1. Autenticação Híbrida: Envia credenciais cifradas via túnel AES+RSA para obter JWT.
- * 2. Comunicação Segura: Todas as requisições ao Datacenter (GET /relatorios, etc.)
- * são encapsuladas em Envelopes Digitais (Criptografia Híbrida) e assinadas com HMAC.
- * 3. Decriptação: Recebe as respostas do servidor cifradas e as exibe em texto claro.
+ * 1. Autenticação Híbrida: Envia credenciais cifradas via túnel AES+RSA para
+ * obter JWT.
+ * 2. Comunicação Segura: Todas as requisições ao Datacenter (GET /relatorios,
+ * etc.)
+ * são encapsuladas em Envelopes Digitais (Criptografia Híbrida) e assinadas com
+ * HMAC.
+ * 3. Decriptação: Recebe as respostas do servidor cifradas e as exibe em texto
+ * claro.
  */
 
 public class Cliente {
@@ -38,16 +42,16 @@ public class Cliente {
                 System.out.println("=================================================");
                 System.out.println("[CLIENTE] Iniciando aplicacao...");
 
-                // 1. Localizacao e Autenticacao
+                // Localizacao e Autenticacao
                 if (!realizarLogin()) {
                     System.out.println("[CLIENTE] Encerrando por falha de login.");
                     return;
                 }
 
-                // 2. Redirecionamento (Discovery Cloud)
+                //Redirecionamento (Discovery Cloud)
                 localizarDatacenter();
 
-                // 3. Menu Interativo
+                // Menu Interativo
                 boolean rodando = true;
                 while (rodando) {
                     System.out.println("\n=================================================");
@@ -100,9 +104,11 @@ public class Cliente {
         System.out.println("OK.");
 
         System.out.println("[LOGIN] Conectando para autenticar...");
-        try (Socket s = new Socket(ipAuth, portaAuth); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+        try (Socket s = new Socket(ipAuth, portaAuth);
+                ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
+                ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
 
-            // 1. Criptografia Híbrida
+            // Criptografia Híbrida
             System.out.print("   -> Gerando chave AES temporaria (192 bits)... ");
             ImplAES aes = new ImplAES(192);
             System.out.println("OK.");
@@ -115,16 +121,16 @@ public class Cliente {
             byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), credenciais.getBytes());
             System.out.println("OK.");
 
-            // 2. Montar Mensagem
+            // Montar Memsagem
             Mensagem msg = new Mensagem(Constantes.TIPO_AUTH_REQ, "cliente01");
             msg.setConteudoCifrado(conteudoCifrado);
             msg.setChaveSimetricaCifrada(chaveSimetricaCifrada);
             msg.setHmac(Base64.getEncoder().encodeToString(hmac));
 
-            // 3. Enviar
+            // Envia
             out.writeObject(msg);
 
-            // 4. Receber Resposta
+            // Recebe a resposta
             System.out.print("[LOGIN] Aguardando resposta... ");
             String respostaCifrada = (String) in.readObject();
             String resp = aes.decifrar(respostaCifrada);
@@ -134,12 +140,12 @@ public class Cliente {
                 System.out.println("SUCESSO! Token JWT recebido.");
                 return true;
             } else {
-                System.out.println("NEGADO (" + resp + ")");
+                System.out.println("NWGADO (" + resp + ")");
                 return false;
             }
         } catch (Exception e) {
             System.out.println("ERRO (" + e.getMessage() + ")");
-            return false;
+        return false;
         }
     }
 
@@ -154,11 +160,12 @@ public class Cliente {
 
     private static void enviarRequisicao(String comandoHttp) {
         System.out.println("\n[REQ] Enviando comando: " + comandoHttp);
-        try (Socket socket = new Socket(ipCloud, portaCloud); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+        try (Socket socket = new Socket(ipCloud, portaCloud);
+                ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+                ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
-            // Criptografia
             System.out.print("   -> Aplicando Criptografia Hibrida e HMAC... ");
-            ImplAES aes = new ImplAES(192); // Nova chave a cada requisição (Perfect Forward Secrecy "fajuto")
+            ImplAES aes = new ImplAES(192);
 
             String conteudoCifrado = aes.cifrar(comandoHttp);
             byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), chavePublicaCloud);
@@ -188,7 +195,9 @@ public class Cliente {
     }
 
     private static String[] buscarServico(String nome) throws Exception {
-        try (Socket s = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+        try (Socket s = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO);
+                ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
+                ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
             out.writeObject("BUSCAR:" + nome);
             String resp = (String) in.readObject();
             return resp.split("\\|");

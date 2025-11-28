@@ -20,8 +20,9 @@ import com.ufersa.seguranca.util.JwtService;
 import com.ufersa.seguranca.util.Util;
 
 /**
- * DATACENTER / CLOUD (Storage & Analytics) * Responsabilidade: Armazenamento
- * centralizado e processamento de relatórios. Segurança:
+ * DATACENTER / CLOUD (Storage & Analytics)
+ * * Responsabilidade: Armazenamento centralizado e processamento de relatórios.
+ * Segurança:
  * 1. Validação: Rejeita conexões sem Token JWT válido ou com falha de integridade (HMAC).
  * 2. Conexão Persistente: Gerencia threads dedicadas para conexões TCP de longa
  * duração.
@@ -45,7 +46,6 @@ public class Datacenter {
             System.out.println("[CLOUD] Ouvindo na porta " + Constantes.PORTA_DATACENTER_TCP);
             while (true) {
                 Socket socket = serverSocket.accept();
-                // Cria uma thread DEDICADA para manter essa conexão viva
                 new Thread(() -> processarConexaoPersistente(socket)).start();
             }
         }
@@ -170,7 +170,7 @@ public class Datacenter {
                 sb.append("4. Umidade Relativa do Ar: ")
                         .append(String.format("%.2f", mediaUmidade)).append(" %\n");
 
-                // 5. Saúde da Rede (Sensores Ativos)
+                // Saúde da Rede (Sensores Ativos)
                 long ativos = bancoDados.stream()
                         .map(DadosSensor::getIdDispositivo).distinct().count();
                 sb.append("5. Sensores Ativos na Rede: ")
@@ -185,7 +185,7 @@ public class Datacenter {
                 if (criticos.isEmpty()) {
                     sb.append("Nenhum alerta critico registrado.\n");
                 } else {
-                    // Mostra apenas os últimos 5 alertas para não poluir a tela
+                    // Mostra apenas os últimos 5 alertas para não enxer a tela
                     int inicio = Math.max(0, criticos.size() - 5);
                     for (int i = inicio; i < criticos.size(); i++) {
                         DadosSensor d = criticos.get(i);

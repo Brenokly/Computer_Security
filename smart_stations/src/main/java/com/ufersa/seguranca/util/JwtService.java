@@ -22,7 +22,7 @@ import io.jsonwebtoken.security.SignatureException;
 public class JwtService {
 
     private static Key CHAVE;
-    private static final long EXPIRACAO = 300000; // 5 minutos
+    private static final long EXPIRACAO = 300000;
 
     // Método chamado pelo AUTH para criar a chave MESTRA aleatória
     public static String inicializarChaveAleatoria() {

@@ -27,7 +27,6 @@ public class ServidorLocalizacao {
             System.out.println("=================================================");
             System.out.println("[LOCALIZACAO] Servidor rodando na porta " + Constantes.PORTA_LOCALIZACAO);
 
-            // Pré-registro das portas conhecidas (Simulação)
             registroServicos.put("AUTH", Constantes.IP_LOCAL + ":" + Constantes.PORTA_AUTH);
             registroServicos.put("BORDA", Constantes.IP_LOCAL + ":" + Constantes.PORTA_BORDA_UDP);
             registroServicos.put("CLOUD", Constantes.IP_LOCAL + ":" + Constantes.PORTA_DATACENTER_TCP);
@@ -40,7 +39,6 @@ public class ServidorLocalizacao {
 
             while (true) {
                 Socket socket = serverSocket.accept();
-                // Log de nova conexão TCP (quem está batendo na porta)
                 System.out.println("[CONEXAO] Novo cliente conectado: " + socket.getInetAddress());
                 new Thread(() -> processarRequisicao(socket)).start();
             }
@@ -61,8 +59,6 @@ public class ServidorLocalizacao {
                 String chavePublica = partes[2];
 
                 chavesPublicas.put(servico, chavePublica);
-
-                // Log importante: mostra que a infraestrutura de chaves está sendo montada
                 System.out.println("[REGISTRO] Chave Pública recebida e armazenada para: " + servico);
 
                 out.writeObject("OK");
@@ -70,7 +66,6 @@ public class ServidorLocalizacao {
             } else if ("BUSCAR".equals(comando)) {
                 String servico = partes[1];
 
-                // Log de operação: mostra o fluxo de descoberta
                 System.out.print("[BUSCA] Solicitacao de endereco/chave para: '" + servico + "'... ");
 
                 String endereco = registroServicos.get(servico);

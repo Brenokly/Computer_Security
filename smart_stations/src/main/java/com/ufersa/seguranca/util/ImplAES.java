@@ -12,9 +12,8 @@ import javax.crypto.spec.SecretKeySpec;
 /**
  * Implementação de Criptografia Simétrica (AES).
  * Padrão: AES/CBC/PKCS5Padding com chaves de 192 bits.
- * Uso: Cifrar o conteúdo (payload) das mensagens devido à sua alta performance.
+ * Uso: Cifrar o conteúdo (payload) das mensagens devido a sua alta performance.
  */
-
 public class ImplAES {
 
     private final SecretKey chave;
