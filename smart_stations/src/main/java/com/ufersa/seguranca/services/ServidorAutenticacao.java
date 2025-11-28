@@ -14,19 +14,18 @@ import java.util.Map;
 import com.ufersa.seguranca.model.Mensagem;
 import com.ufersa.seguranca.util.Constantes;
 import com.ufersa.seguranca.util.ImplAES;
-import com.ufersa.seguranca.util.ImplHashSalt;
+import com.ufersa.seguranca.util.ImplArgon2;
 import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.JwtService;
 import com.ufersa.seguranca.util.Util;
 
 /**
  * SERVIDOR DE AUTENTICAÇÃO
- * * Responsabilidade: Gerenciar identidades, validar credenciais e emitir tokens de sessão.
- * Tecnologias de Segurança:
- * 1. PBKDF2 com Salt: Armazenamento seguro de senhas, resistente a Rainbow Tables.
- * 2. Criptografia Híbrida (RSA + AES): Descriptografa as credenciais recebidas protegidas por envelope digital.
- * 3. HMAC-SHA256: Verifica a integridade do pacote de login antes de processar.
- * 4. JWT (JSON Web Token): Gera tokens assinados com chave secreta dinâmica para autenticação stateless.
+ * Responsabilidade: Gerenciar identidades, validar credenciais e emitir tokens.
+ * Segurança Atualizada:
+ * 1. Armazenamento de Senha: Usa Argon2id (ImplArgon2).
+ * 2. Distribuição de Chaves: Envia chave mestra JWT via RSA.
+ * 3. Protocolo: Valida integridade (HMAC) e confidencialidade (AES+RSA).
  */
 public class ServidorAutenticacao {
 
@@ -63,7 +62,7 @@ public class ServidorAutenticacao {
 
     private static void inicializarBanco() throws Exception {
         System.out.print("[INIT] Carregando banco de usuarios... ");
-        String hashPadrao = ImplHashSalt.getHashSenhaSegura("admin123");
+        String hashPadrao = ImplArgon2.gerarHash("admin123");
 
         bancoUsuarios.put("sensor01", hashPadrao);
         bancoUsuarios.put("sensor02", hashPadrao);
@@ -71,12 +70,14 @@ public class ServidorAutenticacao {
         bancoUsuarios.put("sensor04", hashPadrao);
         bancoUsuarios.put("cliente01", hashPadrao);
 
-        System.out.println(bancoUsuarios.size() + " usuarios carregados.");
+        System.out.println(bancoUsuarios.size() + " usuarios carregados com segurança Argon2.");
     }
 
     private static void registrarNoDiscovery() {
         System.out.print("[INIT] Registrando chave publica no Discovery... ");
-        try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+        try (Socket socket = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO);
+                ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+                ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
             out.writeObject("REGISTRAR_CHAVE:AUTH:" + rsa.getChavePublicaBase64());
             in.readObject();
@@ -88,11 +89,14 @@ public class ServidorAutenticacao {
 
     /*
      * Processa requisições seguras:
-     * 1. Login: Recebe envelope digital, valida HMAC, decifra AES, valida Hash da senha e retorna JWT cifrado.
-     * 2. Sincronização: Distribui a Chave Mestra do JWT (AES-256) cifrada com RSA para Borda e Cloud.
-    */
+     * 1. Login: Recebe envelope digital, valida HMAC, decifra AES, valida Hash da
+     * senha e retorna JWT cifrado.
+     * 2. Sincronização: Distribui a Chave Mestra do JWT (AES-256) cifrada com RSA
+     * para Borda e Cloud.
+     */
     private static void processarRequisicao(Socket socket) {
-        try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
+        try (ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
+                ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
 
             Object obj = in.readObject();
 
@@ -102,9 +106,11 @@ public class ServidorAutenticacao {
 
                 String[] dadosRequester = buscarServico(quemPede);
                 byte[] keyBytes = Base64.getDecoder().decode(dadosRequester[1]);
-                PublicKey publicaRequester = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(keyBytes));
+                PublicKey publicaRequester = KeyFactory.getInstance("RSA")
+                        .generatePublic(new X509EncodedKeySpec(keyBytes));
 
-                byte[] segredoCifrado = ImplRSA.cifrarChaveSimetrica(Base64.getDecoder().decode(SEGREDO_JWT_BASE64), publicaRequester);
+                byte[] segredoCifrado = ImplRSA.cifrarChaveSimetrica(Base64.getDecoder().decode(SEGREDO_JWT_BASE64),
+                        publicaRequester);
 
                 out.writeObject(Base64.getEncoder().encodeToString(segredoCifrado));
                 System.out.println("Enviada (Protegida por RSA).");
@@ -138,7 +144,7 @@ public class ServidorAutenticacao {
                 String senha = parts[1];
 
                 if (bancoUsuarios.containsKey(usuario)) {
-                    boolean valida = ImplHashSalt.validarSenha(senha, bancoUsuarios.get(usuario));
+                    boolean valida = ImplArgon2.verificarSenha(bancoUsuarios.get(usuario), senha);
                     if (valida) {
                         String role = usuario.startsWith("sensor") ? "DEVICE" : "CLIENT";
                         String token = JwtService.gerarToken(usuario, role);
@@ -160,7 +166,9 @@ public class ServidorAutenticacao {
     }
 
     private static String[] buscarServico(String nome) throws Exception {
-        try (Socket s = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+        try (Socket s = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO);
+                ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
+                ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
             out.writeObject("BUSCAR:" + nome);
             String resp = (String) in.readObject();
             return resp.split("\\|");
