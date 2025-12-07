@@ -15,20 +15,6 @@ import com.ufersa.seguranca.util.ImplAES;
 import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.Util;
 
-/**
- * CLIENTE (Aplicação de Usuário)
- * * Responsabilidade: Interface para consulta de dados e relatórios.
- * Segurança:
- * 1. Autenticação Híbrida: Envia credenciais cifradas via túnel AES+RSA para
- * obter JWT.
- * 2. Comunicação Segura: Todas as requisições ao Datacenter (GET /relatorios,
- * etc.)
- * são encapsuladas em Envelopes Digitais (Criptografia Híbrida) e assinadas com
- * HMAC.
- * 3. Decriptação: Recebe as respostas do servidor cifradas e as exibe em texto
- * claro.
- */
-
 public class Cliente {
 
     private static String tokenJwt;
@@ -38,173 +24,114 @@ public class Cliente {
 
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
-            try {
-                System.out.println("=================================================");
-                System.out.println("[CLIENTE] Iniciando aplicacao...");
+            System.out.println("=== CLIENTE DE MONITORAMENTO (SECURE) ===");
 
-                // Localizacao e Autenticacao
-                if (!realizarLogin()) {
-                    System.out.println("[CLIENTE] Encerrando por falha de login.");
-                    return;
-                }
+            if (!realizarLogin()) {
+                return;
+            }
+            localizarDatacenter();
 
-                //Redirecionamento (Discovery Cloud)
-                localizarDatacenter();
-
-                // Menu Interativo
-                boolean rodando = true;
-                while (rodando) {
-                    System.out.println("\n=================================================");
-                    System.out.println("           MENU DE MONITORAMENTO AMBIENTAL       ");
-                    System.out.println("=================================================");
-                    System.out.println("1. Solicitar Relatorios Gerais (Estatísticas)");
-                    System.out.println("2. Ver Alertas Criticos (Tempo Real)");
-                    System.out.println("3. Ver Previsoes (Analise IA)");
-                    System.out.println("0. Sair");
-                    System.out.print(">> Escolha uma opcao: ");
-
-                    String input = scanner.nextLine();
-
-                    try {
-                        int opcao = Integer.parseInt(input);
-                        switch (opcao) {
-                            case 1 ->
-                                enviarRequisicao("GET /relatorios");
-                            case 2 ->
-                                enviarRequisicao("GET /alertas");
-                            case 3 ->
-                                enviarRequisicao("GET /previsoes");
-                            case 0 -> {
-                                System.out.println("[CLIENTE] Encerrando sessao. Ate logo!");
-                                rodando = false;
-                            }
-                            default ->
-                                System.out.println("[ERRO] Opcao invalida.");
-                        }
-                    } catch (NumberFormatException nfe) {
-                        System.out.println("[ERRO] Digite apenas numeros.");
+            OUTER:
+            while (true) {
+                System.out.println("\n--- MENU ---");
+                System.out.println("1. Relatorios Gerais");
+                System.out.println("2. Alertas de Seguranca");
+                System.out.println("0. Sair");
+                System.out.print("Opcao: ");
+                String op = scanner.nextLine();
+                switch (op) {
+                    case "1" -> enviarRequisicao("GET /relatorios");
+                    case "2" -> enviarRequisicao("GET /alertas");
+                    case "0" -> {
+                        break OUTER;
+                    }
+                    default -> {
                     }
                 }
-
-            } catch (Exception e) {
-                System.out.println("[ERRO CRITICO] " + e.getMessage());
             }
+        } catch (Exception e) {
+            System.out.println("Erro no cliente: " + e.getMessage());
         }
     }
 
     private static boolean realizarLogin() throws Exception {
-        System.out.print("[INIT] Buscando Servidor de Autenticacao... ");
+        System.out.println("[CLIENTE] Iniciando autenticacao...");
         String[] dadosAuth = buscarServico("AUTH");
-        String ipAuth = dadosAuth[0].split(":")[0];
-        int portaAuth = Integer.parseInt(dadosAuth[0].split(":")[1]);
-        System.out.println("Encontrado (" + ipAuth + ":" + portaAuth + ")");
+        PublicKey pubAuth = decodificarChavePublica(dadosAuth[1]);
 
-        System.out.print("[CRYPTO] Processando Chave Publica do Auth... ");
-        PublicKey chavePublicaAuth = decodificarChavePublica(dadosAuth[1]);
-        System.out.println("OK.");
+        try (Socket s = new Socket(dadosAuth[0].split(":")[0], Integer.parseInt(dadosAuth[0].split(":")[1])); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
 
-        System.out.println("[LOGIN] Conectando para autenticar...");
-        try (Socket s = new Socket(ipAuth, portaAuth);
-                ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-                ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
-
-            // Criptografia Híbrida
-            System.out.print("   -> Gerando chave AES temporaria (192 bits)... ");
             ImplAES aes = new ImplAES(192);
-            System.out.println("OK.");
+            String creds = "cliente01:admin123";
 
-            String credenciais = "cliente01:admin123";
-            System.out.print("   -> Cifrando credenciais e assinando (HMAC)... ");
+            System.out.println("[CRYPTO-LOG] Cifrando credenciais com AES...");
+            String cc = aes.cifrar(creds);
 
-            String conteudoCifrado = aes.cifrar(credenciais);
-            byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), chavePublicaAuth);
-            byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), credenciais.getBytes());
-            System.out.println("OK.");
+            System.out.println("[CRYPTO-LOG] Cifrando chave AES com RSA do Auth...");
+            byte[] kc = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), pubAuth);
 
-            // Montar Memsagem
-            Mensagem msg = new Mensagem(Constantes.TIPO_AUTH_REQ, "cliente01");
-            msg.setConteudoCifrado(conteudoCifrado);
-            msg.setChaveSimetricaCifrada(chaveSimetricaCifrada);
-            msg.setHmac(Base64.getEncoder().encodeToString(hmac));
+            System.out.println("[CRYPTO-LOG] Gerando HMAC...");
+            byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), creds.getBytes());
 
-            // Envia
-            out.writeObject(msg);
+            Mensagem m = new Mensagem(Constantes.TIPO_AUTH_REQ, "cliente01");
+            m.setConteudoCifrado(cc);
+            m.setChaveSimetricaCifrada(kc);
+            m.setHmac(Base64.getEncoder().encodeToString(hmac));
 
-            // Recebe a resposta
-            System.out.print("[LOGIN] Aguardando resposta... ");
-            String respostaCifrada = (String) in.readObject();
-            String resp = aes.decifrar(respostaCifrada);
+            out.writeObject(m);
+            String resp = aes.decifrar((String) in.readObject());
 
             if (resp.startsWith("OK")) {
                 tokenJwt = resp.split(":")[1];
-                System.out.println("SUCESSO! Token JWT recebido.");
+                System.out.println("[CLIENTE] Login Sucesso. Token JWT Armazenado.");
                 return true;
-            } else {
-                System.out.println("NWGADO (" + resp + ")");
-                return false;
             }
-        } catch (Exception e) {
-            System.out.println("ERRO (" + e.getMessage() + ")");
+        }
         return false;
+    }
+
+    private static void enviarRequisicao(String cmd) throws Exception {
+        try (Socket s = new Socket(ipCloud, portaCloud); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+
+            System.out.println("\n[CLIENTE] Preparando envio seguro...");
+            ImplAES aes = new ImplAES(192);
+
+            System.out.println("[CRYPTO-LOG] Cifrando payload: " + cmd);
+            String cc = aes.cifrar(cmd);
+            byte[] kc = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), chavePublicaCloud);
+            byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), cmd.getBytes());
+
+            Mensagem m = new Mensagem(Constantes.TIPO_RELATORIO_REQ, "CLIENTE");
+            m.setTokenJwt(tokenJwt);
+            m.setConteudoCifrado(cc);
+            m.setChaveSimetricaCifrada(kc);
+            m.setHmac(Base64.getEncoder().encodeToString(hmac));
+
+            out.writeObject(m);
+            System.out.println("[CLIENTE] Enviado.");
+
+            String respCifrada = (String) in.readObject();
+            System.out.println("[CLIENTE] Resposta recebida. Decifrando...");
+            System.out.println(aes.decifrar(respCifrada));
         }
     }
 
     private static void localizarDatacenter() throws Exception {
-        System.out.print("[INIT] Localizando Datacenter (Cloud)... ");
-        String[] dadosCloud = buscarServico("CLOUD");
-        ipCloud = dadosCloud[0].split(":")[0];
-        portaCloud = Integer.parseInt(dadosCloud[0].split(":")[1]);
-        chavePublicaCloud = decodificarChavePublica(dadosCloud[1]);
-        System.out.println("OK. Redirecionado para " + ipCloud + ":" + portaCloud);
+        String[] d = buscarServico("CLOUD");
+        ipCloud = d[0].split(":")[0];
+        portaCloud = Integer.parseInt(d[0].split(":")[1]);
+        chavePublicaCloud = decodificarChavePublica(d[1]);
+        System.out.println("[CLIENTE] Cloud localizada: " + ipCloud + ":" + portaCloud);
     }
 
-    private static void enviarRequisicao(String comandoHttp) {
-        System.out.println("\n[REQ] Enviando comando: " + comandoHttp);
-        try (Socket socket = new Socket(ipCloud, portaCloud);
-                ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream());
-                ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-
-            System.out.print("   -> Aplicando Criptografia Hibrida e HMAC... ");
-            ImplAES aes = new ImplAES(192);
-
-            String conteudoCifrado = aes.cifrar(comandoHttp);
-            byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), chavePublicaCloud);
-            byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), comandoHttp.getBytes());
-            System.out.println("OK.");
-
-            Mensagem msg = new Mensagem(Constantes.TIPO_RELATORIO_REQ, "CLIENTE_APP");
-            msg.setTokenJwt(tokenJwt);
-            msg.setChaveSimetricaCifrada(chaveSimetricaCifrada);
-            msg.setConteudoCifrado(conteudoCifrado);
-            msg.setHmac(Base64.getEncoder().encodeToString(hmac));
-
-            out.writeObject(msg);
-            System.out.println("   -> Enviado.");
-
-            String respostaCifrada = (String) in.readObject();
-            System.out.print("   -> Resposta recebida. Decifrando... ");
-            String resposta = aes.decifrar(respostaCifrada);
-            System.out.println("OK.");
-
-            System.out.println("\n[RESPOSTA DA NUVEM]");
-            System.out.println(resposta);
-
-        } catch (Exception e) {
-            System.out.println("[ERRO CONEXAO] " + e.getMessage());
+    private static String[] buscarServico(String n) throws Exception {
+        try (Socket s = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+            out.writeObject("BUSCAR:" + n);
+            return ((String) in.readObject()).split("\\|");
         }
     }
 
-    private static String[] buscarServico(String nome) throws Exception {
-        try (Socket s = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_LOCALIZACAO);
-                ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-                ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
-            out.writeObject("BUSCAR:" + nome);
-            String resp = (String) in.readObject();
-            return resp.split("\\|");
-        }
-    }
-
-    private static PublicKey decodificarChavePublica(String b64) throws Exception {
-        return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(b64)));
+    private static PublicKey decodificarChavePublica(String b) throws Exception {
+        return KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(b)));
     }
 }

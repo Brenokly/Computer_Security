@@ -6,11 +6,14 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.KeyFactory;
 import java.security.PublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.ufersa.seguranca.model.DadosSensor;
 import com.ufersa.seguranca.model.Mensagem;
@@ -20,35 +23,28 @@ import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.JwtService;
 import com.ufersa.seguranca.util.Util;
 
-/**
- * SERVIDOR DE BORDA (Edge Gateway) * Responsabilidade: Intermediário entre
- * dispositivos (UDP) e Nuvem (TCP). Funcionalidades de Segurança e Rede:
- * 1. Recebimento UDP: Aceita dados de sensores.
- * 2. Validação de Segurança: Verifica validade do JWT e integridade HMAC do pacote.
- * 3. Descriptografia Híbrida: Usa sua chave Privada RSA para abrir o envelope e acessar os dados.
- * 4. Edge Computing: Realiza análise preliminar (ex: alertas de temperatura)
- * antes do envio.
- * 5. Re-encriptação e TCP Persistente: Cria um novo envelope digital
- * (com a chave da Cloud) e encaminha via TCP.
- */
 public class ServidorBorda {
 
     private static ImplRSA rsa;
     private static PublicKey chavePublicaCloud;
-
-    private static Socket socketCloud;
-    private static ObjectOutputStream outCloud;
+    private static Socket socketProximoSalto;
+    private static ObjectOutputStream outProximoSalto;
+    private static final Set<String> sessoesBloqueadas = new HashSet<>();
 
     public static void main(String[] args) throws Exception {
-        System.out.println("=== BORDA (PERSISTENTE) ===");
+        System.out.println("=== SERVIDOR DE BORDA (DMZ) ===");
         rsa = new ImplRSA();
         registrarNoDiscovery();
         sincronizarChaveJwt("BORDA");
         buscarChaveCloud();
 
+        new Thread(ServidorBorda::iniciarListenerComandosIDS).start();
+
         try (DatagramSocket serverSocket = new DatagramSocket(Constantes.PORTA_BORDA_UDP)) {
-            System.out.println("[BORDA] UDP Ativo. Conectando a Cloud...");
-            garantirConexaoCloud(); // Abre a conexão TCP logo no início
+            System.out.println("[BORDA] Ouvindo UDP na porta " + Constantes.PORTA_BORDA_UDP);
+            System.out.println("[BORDA] Encaminhamento configurado para FIREWALL PROXY (Porta " + Constantes.PORTA_FIREWALL_2_PROXY + ")");
+
+            garantirConexaoProximoSalto();
 
             byte[] receiveData = new byte[65535];
             while (true) {
@@ -59,36 +55,51 @@ public class ServidorBorda {
         }
     }
 
-    private static synchronized void garantirConexaoCloud() {
-        try {
-            if (socketCloud == null || socketCloud.isClosed() || !socketCloud.isConnected()) {
-                System.out.print("[TCP] Conectando a Nuvem... ");
-                socketCloud = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_DATACENTER_TCP);
-                outCloud = new ObjectOutputStream(socketCloud.getOutputStream());
-                System.out.println("CONECTADO.");
+    private static void iniciarListenerComandosIDS() {
+        try (ServerSocket server = new ServerSocket(Constantes.PORTA_IDS_CMD_BORDA)) {
+            System.out.println("[BORDA] Ouvindo comandos do IDS na porta " + Constantes.PORTA_IDS_CMD_BORDA);
+            while (true) {
+                Socket s = server.accept();
+                try (ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
+                    String cmd = (String) in.readObject();
+                    if (cmd.startsWith("BLOQUEAR:")) {
+                        String alvo = cmd.split(":")[1];
+                        sessoesBloqueadas.add(alvo);
+                        System.out.println("[BORDA] !!! COMANDO IDS: Bloqueando origem '" + alvo + "' !!!");
+                    }
+                } catch (Exception e) {
+                    System.out.println("[BORDA] Erro ao processar comando IDS: " + e.getMessage());
+                }
             }
         } catch (IOException e) {
-            System.out.println("FALHA CONEXAO (" + e.getMessage() + ")");
-            socketCloud = null;
+            System.out.println("[BORDA] Erro no listener de comandos IDS: " + e.getMessage());
         }
     }
 
-    /*
-     * Encaminha dados para a Cloud via conexão TCP Persistente.
-     * Segurança: Gera um novo Token JWT (assinando como Gateway) e aplica
-     * nova camada de Criptografia Híbrida (AES efêmero + RSA da Cloud) + HMAC.
-     */
-    private static void enviarParaCloud(DadosSensor dados) throws Exception {
+    private static synchronized void garantirConexaoProximoSalto() {
+        try {
+            if (socketProximoSalto == null || socketProximoSalto.isClosed() || !socketProximoSalto.isConnected()) {
+                System.out.print("[TCP] Conectando ao Firewall Proxy... ");
+                socketProximoSalto = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_FIREWALL_2_PROXY);
+                outProximoSalto = new ObjectOutputStream(socketProximoSalto.getOutputStream());
+                System.out.println("CONECTADO.");
+            }
+        } catch (IOException e) {
+            System.out.println("FALHA CONEXAO PROXY (" + e.getMessage() + ")");
+            socketProximoSalto = null;
+        }
+    }
+
+    private static void enviarParaProximoSalto(DadosSensor dados) throws Exception {
         if (chavePublicaCloud == null) {
             buscarChaveCloud();
         }
-        garantirConexaoCloud(); // Reconecta se tiver caído
+        garantirConexaoProximoSalto();
 
-        if (outCloud == null) {
-            return; // Sem nuvem, descarta
+        if (outProximoSalto == null) {
+            return;
         }
         try {
-            // usando Criptografia Híbrida
             ImplAES aesEnvio = new ImplAES(192);
             String conteudoCifrado = aesEnvio.cifrar(dados.toString());
             byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaCloud);
@@ -100,20 +111,20 @@ public class ServidorBorda {
             msg.setConteudoCifrado(conteudoCifrado);
             msg.setHmac(Base64.getEncoder().encodeToString(hmac));
 
-            synchronized (outCloud) {
-                outCloud.writeObject(msg);
-                outCloud.flush();
-                outCloud.reset();
+            synchronized (outProximoSalto) {
+                outProximoSalto.writeObject(msg);
+                outProximoSalto.flush();
+                outProximoSalto.reset();
             }
-            System.out.println("[CLOUD] Enviado.");
+            System.out.println("[BORDA -> PROXY] Envelope enviado.");
 
         } catch (Exception e) {
             System.out.println("[ERRO ENVIO] " + e.getMessage());
             try {
-                socketCloud.close();
+                socketProximoSalto.close();
             } catch (IOException ex) {
             }
-            socketCloud = null; // Força reconexão na próxima
+            socketProximoSalto = null;
         }
     }
 
@@ -166,12 +177,19 @@ public class ServidorBorda {
     }
 
     private static void processarPacote(DatagramPacket packet) {
+        String ipOrigem = packet.getAddress().getHostAddress();
+
         try {
             ByteArrayInputStream bais = new ByteArrayInputStream(packet.getData(), 0, packet.getLength());
             ObjectInputStream ois = new ObjectInputStream(bais);
             Mensagem msg = (Mensagem) ois.readObject();
 
-            System.out.print("[PROCESSAMENTO] Sensor: " + msg.getIdOrigem() + " | Validando... ");
+            if (sessoesBloqueadas.contains(ipOrigem) || sessoesBloqueadas.contains(msg.getIdOrigem())) {
+                System.out.println("[BORDA] Pacote descartado. Origem bloqueada pelo IDS: " + msg.getIdOrigem());
+                return;
+            }
+
+            System.out.print("[BORDA] Sensor: " + msg.getIdOrigem() + " | Validando... ");
             if (JwtService.validarToken(msg.getTokenJwt()) == null) {
                 System.out.println("TOKEN INVALIDO");
                 return;
@@ -189,11 +207,7 @@ public class ServidorBorda {
             System.out.println("OK.");
 
             DadosSensor dados = DadosSensor.fromString(jsonConteudo);
-            if (dados.getTemperatura() > 40.0) {
-                System.out.println(">>> [ALERTA BORDA] Temp Critica: " + dados.getTemperatura() + "C <<<");
-            }
-
-          enviarParaCloud(dados);
+            enviarParaProximoSalto(dados);
 
         } catch (Exception e) {
             System.out.println("[ERRO PROCESSAMENTO] " + e.getMessage());

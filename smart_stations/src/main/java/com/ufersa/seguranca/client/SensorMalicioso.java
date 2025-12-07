@@ -3,7 +3,7 @@ package com.ufersa.seguranca.client;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import static java.lang.Thread.sleep;
+import java.lang.reflect.Field;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
@@ -20,43 +20,46 @@ import com.ufersa.seguranca.util.ImplAES;
 import com.ufersa.seguranca.util.ImplRSA;
 import com.ufersa.seguranca.util.Util;
 
-public class Dispositivo {
+public class SensorMalicioso {
 
-    public void iniciarCiclo(String id, String usuario, String senha) {
+    public static void main(String[] args) {
+        new SensorMalicioso().executarAtaque();
+    }
+
+    public void executarAtaque() {
         try {
-            System.out.println("=== SENSOR " + id + " INICIANDO ===");
+            System.out.println("=== SENSOR MALICIOSO INICIANDO ATAQUE ===");
+
+            String id = "sensor01";
 
             String[] dadosAuth = buscarServico("AUTH");
-            String ipAuth = dadosAuth[0].split(":")[0];
-            int portaAuth = Integer.parseInt(dadosAuth[0].split(":")[1]);
+            String token = autenticar(dadosAuth[0].split(":")[0], Integer.parseInt(dadosAuth[0].split(":")[1]), "sensor01", "admin123");
 
-            String token = autenticar(ipAuth, portaAuth, usuario, senha);
             if (token == null) {
+                System.out.println("Falha ao obter token valido para o ataque.");
                 return;
             }
-            System.out.println("[" + id + "] Autenticado. Token obtido.");
 
             String[] dadosBorda = buscarServico("BORDA");
-            String ipDestino = dadosBorda[0].split(":")[0];
-
+            PublicKey pubBorda = decodificarChavePublica(dadosBorda[1]);
             int portaDestino = Constantes.PORTA_FIREWALL_1_UDP;
-
-            PublicKey chavePublicaBorda = decodificarChavePublica(dadosBorda[1]);
-            System.out.println("[" + id + "] Alvo definido: FIREWALL 1 (" + ipDestino + ":" + portaDestino + ")");
 
             try (DatagramSocket socket = new DatagramSocket()) {
                 while (true) {
                     DadosSensor dados = new DadosSensor(id);
 
+                    alterarTemperaturaNaForca(dados, 1500.0);
+                    System.out.println("[ATAQUE] Gerando dado anomalo: Temp 1500.0 C");
+
                     ImplAES aes = new ImplAES(192);
-                    String conteudoCifrado = aes.cifrar(dados.toString());
-                    byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), chavePublicaBorda);
+                    String cc = aes.cifrar(dados.toString());
+                    byte[] kc = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), pubBorda);
                     byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), dados.toString().getBytes());
 
                     Mensagem msg = new Mensagem(Constantes.TIPO_DADOS_SENSOR, id);
                     msg.setTokenJwt(token);
-                    msg.setConteudoCifrado(conteudoCifrado);
-                    msg.setChaveSimetricaCifrada(chaveSimetricaCifrada);
+                    msg.setConteudoCifrado(cc);
+                    msg.setChaveSimetricaCifrada(kc);
                     msg.setHmac(Base64.getEncoder().encodeToString(hmac));
 
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -64,17 +67,23 @@ public class Dispositivo {
                     oos.writeObject(msg);
                     byte[] buffer = baos.toByteArray();
 
-                    InetAddress address = InetAddress.getByName(ipDestino);
-                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length, address, portaDestino);
+                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(Constantes.IP_LOCAL), portaDestino);
                     socket.send(packet);
 
-                    System.out.println("[" + id + "] Dados enviados (Temp: " + String.format("%.2f", dados.getTemperatura()) + "C)");
-                    sleep(3000);
+                    System.out.println("[ATAQUE] Pacote enviado. Aguardando deteccao...");
+                    Thread.sleep(4000);
                 }
             }
+
         } catch (Exception e) {
-            System.out.println("Erro no sensor: " + e.getMessage());
+            System.out.println("Ataque interrompido: " + e.getMessage());
         }
+    }
+
+    private void alterarTemperaturaNaForca(DadosSensor d, double temp) throws Exception {
+        Field f = DadosSensor.class.getDeclaredField("temperatura");
+        f.setAccessible(true);
+        f.setDouble(d, temp);
     }
 
     private String[] buscarServico(String nome) throws Exception {
@@ -88,31 +97,21 @@ public class Dispositivo {
         try {
             String[] dadosAuth = buscarServico("AUTH");
             PublicKey pubAuth = decodificarChavePublica(dadosAuth[1]);
-
             try (Socket s = new Socket(ip, porta); ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream()); ObjectInputStream in = new ObjectInputStream(s.getInputStream())) {
-
                 ImplAES aes = new ImplAES(192);
                 String payload = user + ":" + pass;
-
-                String conteudoc = aes.cifrar(payload);
-                byte[] chavec = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), pubAuth);
-                byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), payload.getBytes());
-
                 Mensagem m = new Mensagem(Constantes.TIPO_AUTH_REQ, user);
-                m.setConteudoCifrado(conteudoc);
-                m.setChaveSimetricaCifrada(chavec);
-                m.setHmac(Base64.getEncoder().encodeToString(hmac));
-
+                m.setConteudoCifrado(aes.cifrar(payload));
+                m.setChaveSimetricaCifrada(ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), pubAuth));
+                m.setHmac(Base64.getEncoder().encodeToString(Util.calcularHmacSha256(aes.getChaveBytes(), payload.getBytes())));
                 out.writeObject(m);
-
-                String respc = (String) in.readObject();
-                String resp = aes.decifrar(respc);
+                String resp = aes.decifrar((String) in.readObject());
                 if (resp.startsWith("OK")) {
                     return resp.split(":")[1];
                 }
             }
         } catch (Exception e) {
-            System.out.println("Erro ao autenticar: " + e.getMessage());
+            return null;
         }
         return null;
     }
