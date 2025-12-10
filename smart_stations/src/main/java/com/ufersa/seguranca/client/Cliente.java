@@ -40,8 +40,10 @@ public class Cliente {
                 System.out.print("Opcao: ");
                 String op = scanner.nextLine();
                 switch (op) {
-                    case "1" -> enviarRequisicao("GET /relatorios");
-                    case "2" -> enviarRequisicao("GET /alertas");
+                    case "1" ->
+                        enviarRequisicao("GET /relatorios");
+                    case "2" ->
+                        enviarRequisicao("GET /alertas");
                     case "0" -> {
                         break OUTER;
                     }
@@ -119,9 +121,11 @@ public class Cliente {
     private static void localizarDatacenter() throws Exception {
         String[] d = buscarServico("CLOUD");
         ipCloud = d[0].split(":")[0];
-        portaCloud = Integer.parseInt(d[0].split(":")[1]);
+
+        portaCloud = Constantes.PORTA_FIREWALL_1_TCP;
+
         chavePublicaCloud = decodificarChavePublica(d[1]);
-        System.out.println("[CLIENTE] Cloud localizada: " + ipCloud + ":" + portaCloud);
+        System.out.println("[CLIENTE] Conectando via FIREWALL DE BORDA: " + ipCloud + ":" + portaCloud);
     }
 
     private static String[] buscarServico(String n) throws Exception {

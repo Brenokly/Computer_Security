@@ -26,7 +26,7 @@ import com.ufersa.seguranca.util.Util;
 public class ServidorBorda {
 
     private static ImplRSA rsa;
-    private static PublicKey chavePublicaCloud;
+    private static PublicKey chavePublicaProxy; // CORRIGIDO: Agora é chave do Proxy
     private static Socket socketProximoSalto;
     private static ObjectOutputStream outProximoSalto;
     private static final Set<String> sessoesBloqueadas = new HashSet<>();
@@ -36,7 +36,7 @@ public class ServidorBorda {
         rsa = new ImplRSA();
         registrarNoDiscovery();
         sincronizarChaveJwt("BORDA");
-        buscarChaveCloud();
+        buscarChaveProxy(); // CORRIGIDO: Busca a chave do Proxy
 
         new Thread(ServidorBorda::iniciarListenerComandosIDS).start();
 
@@ -91,18 +91,22 @@ public class ServidorBorda {
     }
 
     private static void enviarParaProximoSalto(DadosSensor dados) throws Exception {
-        if (chavePublicaCloud == null) {
-            buscarChaveCloud();
+        if (chavePublicaProxy == null) {
+            buscarChaveProxy();
         }
         garantirConexaoProximoSalto();
 
         if (outProximoSalto == null) {
             return;
         }
+
         try {
             ImplAES aesEnvio = new ImplAES(192);
             String conteudoCifrado = aesEnvio.cifrar(dados.toString());
-            byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaCloud);
+
+            // CORRIGIDO: Usa a chave do Proxy para cifrar a chave AES
+            byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaProxy);
+
             byte[] hmac = Util.calcularHmacSha256(aesEnvio.getChaveBytes(), dados.toString().getBytes());
 
             Mensagem msg = new Mensagem(Constantes.TIPO_DADOS_SENSOR, "BORDA");
@@ -142,7 +146,6 @@ public class ServidorBorda {
         try {
             String[] dadosAuth = buscarServico("AUTH");
             try (Socket socket = new Socket(dadosAuth[0].split(":")[0], Integer.parseInt(dadosAuth[0].split(":")[1])); ObjectOutputStream out = new ObjectOutputStream(socket.getOutputStream()); ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
-
                 out.writeObject("SOLICITAR_CHAVE_JWT:" + meuNome);
                 String chaveCifradaBase64 = (String) in.readObject();
                 byte[] chaveJwtBytes = rsa.decifrarChaveSimetrica(Base64.getDecoder().decode(chaveCifradaBase64));
@@ -154,14 +157,14 @@ public class ServidorBorda {
         }
     }
 
-    private static void buscarChaveCloud() {
+    private static void buscarChaveProxy() { // CORRIGIDO: Busca chave do Proxy
         try {
-            String[] dadosCloud = buscarServico("CLOUD");
-            byte[] keyBytes = Base64.getDecoder().decode(dadosCloud[1]);
-            chavePublicaCloud = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(keyBytes));
-            System.out.println("[INIT] Chave Publica da Cloud obtida.");
+            String[] dadosProxy = buscarServico("PROXY");
+            byte[] keyBytes = Base64.getDecoder().decode(dadosProxy[1]);
+            chavePublicaProxy = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(keyBytes));
+            System.out.println("[INIT] Chave Publica do PROXY obtida.");
         } catch (Exception e) {
-            System.out.println("[INIT] Erro ao buscar chave Cloud: " + e.getMessage());
+            System.out.println("[INIT] Erro ao buscar chave Proxy: " + e.getMessage());
         }
     }
 
@@ -178,7 +181,6 @@ public class ServidorBorda {
 
     private static void processarPacote(DatagramPacket packet) {
         String ipOrigem = packet.getAddress().getHostAddress();
-
         try {
             ByteArrayInputStream bais = new ByteArrayInputStream(packet.getData(), 0, packet.getLength());
             ObjectInputStream ois = new ObjectInputStream(bais);

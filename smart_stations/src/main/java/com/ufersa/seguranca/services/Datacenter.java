@@ -133,7 +133,7 @@ public class Datacenter {
             out.writeObject("REGISTRAR_CHAVE:CLOUD:" + rsa.getChavePublicaBase64());
             in.readObject();
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("[CLOUD] Erro ao registrar no Discovery: " + e.getMessage());
         }
     }
 

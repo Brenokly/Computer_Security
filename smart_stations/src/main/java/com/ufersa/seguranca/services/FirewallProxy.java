@@ -102,11 +102,7 @@ public class FirewallProxy {
     }
 
     private static boolean detectarAnomalia(DadosSensor dados) {
-        if (dados.getTemperatura() > 80.0 || dados.getTemperatura() < -20.0 || dados.getCo2() > 2000.0) {
-            return true;
-        }
-
-        return false;
+        return dados.getTemperatura() > 80.0 || dados.getTemperatura() < -20.0 || dados.getCo2() > 2000.0;
     }
 
     private static void encaminharParaCloud(DadosSensor dados) throws Exception {
