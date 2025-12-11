@@ -26,7 +26,7 @@ import com.ufersa.seguranca.util.Util;
 public class ServidorBorda {
 
     private static ImplRSA rsa;
-    private static PublicKey chavePublicaProxy; // CORRIGIDO: Agora é chave do Proxy
+    private static PublicKey chavePublicaProxy;
     private static Socket socketProximoSalto;
     private static ObjectOutputStream outProximoSalto;
     private static final Set<String> sessoesBloqueadas = new HashSet<>();
@@ -36,8 +36,7 @@ public class ServidorBorda {
         rsa = new ImplRSA();
         registrarNoDiscovery();
         sincronizarChaveJwt("BORDA");
-        buscarChaveProxy(); // CORRIGIDO: Busca a chave do Proxy
-
+        buscarChaveProxy();
         new Thread(ServidorBorda::iniciarListenerComandosIDS).start();
 
         try (DatagramSocket serverSocket = new DatagramSocket(Constantes.PORTA_BORDA_UDP)) {
@@ -104,7 +103,6 @@ public class ServidorBorda {
             ImplAES aesEnvio = new ImplAES(192);
             String conteudoCifrado = aesEnvio.cifrar(dados.toString());
 
-            // CORRIGIDO: Usa a chave do Proxy para cifrar a chave AES
             byte[] chaveSimetricaCifrada = ImplRSA.cifrarChaveSimetrica(aesEnvio.getChaveBytes(), chavePublicaProxy);
 
             byte[] hmac = Util.calcularHmacSha256(aesEnvio.getChaveBytes(), dados.toString().getBytes());
@@ -157,7 +155,7 @@ public class ServidorBorda {
         }
     }
 
-    private static void buscarChaveProxy() { // CORRIGIDO: Busca chave do Proxy
+    private static void buscarChaveProxy() {
         try {
             String[] dadosProxy = buscarServico("PROXY");
             byte[] keyBytes = Base64.getDecoder().decode(dadosProxy[1]);

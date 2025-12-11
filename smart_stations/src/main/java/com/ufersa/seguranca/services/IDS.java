@@ -13,8 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.ufersa.seguranca.util.Constantes;
 
 public class IDS {
-
-    // Estrutura para armazenar detalhes de cada evento para o relatório final
     private static class EventoSeguranca {
 
         String tipo;
@@ -39,10 +37,8 @@ public class IDS {
         System.out.println("[IDS] Monitorando rede na porta " + Constantes.PORTA_IDS);
         System.out.println("[IDS] Digite 'RELATORIO' a qualquer momento para ver o consolidado.");
 
-        // Thread para escutar alertas dos Firewalls (Porta 8000)
         new Thread(IDS::iniciarServidorLogs).start();
 
-        // Thread para interface com o Admin (Console) para gerar o relatório final
         new Thread(IDS::menuInterativo).start();
     }
 
@@ -72,22 +68,18 @@ public class IDS {
         try (ObjectInputStream in = new ObjectInputStream(socket.getInputStream())) {
             String mensagemBruta = (String) in.readObject();
 
-            // Formato esperado: TIPO|ORIGEM|CONTEUDO
             String[] parts = mensagemBruta.split("\\|");
             String tipo = parts.length > 0 ? parts[0] : "DESCONHECIDO";
             String origem = parts.length > 1 ? parts[1] : "N/A";
             String detalhe = parts.length > 2 ? parts[2] : "Sem detalhes";
 
-            // Registra em memória para o relatório
             synchronized (baseDeDadosEventos) {
                 baseDeDadosEventos.add(new EventoSeguranca(tipo, origem, detalhe));
             }
             contadorAtaquesPorIp.merge(origem, 1, Integer::sum);
 
-            // Log em tempo real
             System.out.println("[ALERTA EM TEMPO REAL] Tipo: " + tipo + " | Origem: " + origem);
 
-            // Lógica de Bloqueio Automático
             if (tipo.contains("ANOMALIA") || tipo.contains("ATAQUE")) {
                 bloquearNoFirewall(origem);
             }
@@ -113,7 +105,6 @@ public class IDS {
         }
     }
 
-    // Cumpre o requisito de "Mostrar relatórios gerados"
     private static void gerarRelatorioFinal() {
         System.out.println("\n============================================================");
         System.out.println("          RELATORIO CONSOLIDADO DE SEGURANCA (IDS)          ");
@@ -124,7 +115,7 @@ public class IDS {
 
         System.out.println("\n[1] LISTA DE IPS BLOQUEADOS (BLACKLIST):");
         if (ipsBloqueados.isEmpty()) {
-            System.out.println("   (Nenhum bloqueio realizado)");
+            System.out.println("   (Nenhum bloquei realizado)");
         }
         for (String ip : ipsBloqueados) {
             System.out.println("   -> " + ip + " (Bloqueado por atividade maliciosa)");

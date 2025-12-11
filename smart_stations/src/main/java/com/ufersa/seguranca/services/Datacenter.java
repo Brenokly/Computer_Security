@@ -59,7 +59,7 @@ public class Datacenter {
                 }
             }
         } catch (Exception e) {
-            System.out.println("[CLOUD] Erro ao processar conexao de " + ip + ": " + e.getMessage());
+            System.out.println("[CLOUD] Erro ao processa conexao de " + ip + ": " + e.getMessage());
         }
     }
 
@@ -71,11 +71,11 @@ public class Datacenter {
             System.out.println("[CLOUD] ERRO: Token Invalido/Expirado.");
             return;
         }
-        System.out.println("[CRYPTO-LOG]    -> Token Autentico.");
+        System.out.println("[CRYPTO-LOG]    -> Token Autenticad.");
 
         System.out.println("[CRYPTO-LOG] 2. Decifrando Chave de Sessao (RSA)...");
         byte[] chaveAesBytes = rsa.decifrarChaveSimetrica(msg.getChaveSimetricaCifrada());
-        System.out.println("[CRYPTO-LOG]    -> Chave Simetrica obtida.");
+        System.out.println("[CRYPTO-LOG]    -> Chave Simrtrica obtida.");
 
         System.out.println("[CRYPTO-LOG] 3. Decifrando Dados (AES)...");
         ImplAES aes = new ImplAES(chaveAesBytes);

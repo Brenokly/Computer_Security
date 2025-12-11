@@ -17,7 +17,7 @@ public class ServidorLocalizacao {
         try (ServerSocket serverSocket = new ServerSocket(Constantes.PORTA_LOCALIZACAO)) {
             System.out.println("=== SERVIDOR DE LOCALIZACAO (DNS/PKI) ===");
 
-            // Mapeamento Seguro (Apontando para Firewalls/DMZ)
+            // Apontando para Firewalls/DMZ
             registroServicos.put("AUTH", Constantes.IP_LOCAL + ":" + Constantes.PORTA_AUTH);
 
             // Sensores devem bater no Firewall 1 (UDP)

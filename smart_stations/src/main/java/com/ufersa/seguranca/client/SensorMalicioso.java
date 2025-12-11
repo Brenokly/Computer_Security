@@ -49,7 +49,7 @@ public class SensorMalicioso {
                     DadosSensor dados = new DadosSensor(id);
 
                     alterarTemperaturaNaForca(dados, 1500.0);
-                    System.out.println("[ATAQUE] Gerando dado anomalo: Temp 1500.0 C");
+                    System.out.println("[ATAQUE] Gerando dado anomalp: Temp 1500.0 C");
 
                     ImplAES aes = new ImplAES(192);
                     String cc = aes.cifrar(dados.toString());

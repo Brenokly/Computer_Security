@@ -29,8 +29,6 @@ public class DadosSensor implements Serializable {
         gerarDadosAleatorios();
     }
 
-    // Esse método gera dados aleatórios para simular leituras dos sensores
-    // Valores são baseados em faixas típicas de poluentes e condições ambientais
     private void gerarDadosAleatorios() {
         this.co2 = ThreadLocalRandom.current().nextDouble(350.0, 1200.0);
         this.co = ThreadLocalRandom.current().nextDouble(0.1, 15.0);

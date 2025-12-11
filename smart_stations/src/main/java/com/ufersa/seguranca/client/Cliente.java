@@ -21,6 +21,7 @@ public class Cliente {
     private static String ipCloud;
     private static int portaCloud;
     private static PublicKey chavePublicaCloud;
+    private static PublicKey chavePublicaProxy;
 
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
@@ -100,7 +101,8 @@ public class Cliente {
 
             System.out.println("[CRYPTO-LOG] Cifrando payload: " + cmd);
             String cc = aes.cifrar(cmd);
-            byte[] kc = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), chavePublicaCloud);
+
+            byte[] kc = ImplRSA.cifrarChaveSimetrica(aes.getChaveBytes(), chavePublicaProxy);
             byte[] hmac = Util.calcularHmacSha256(aes.getChaveBytes(), cmd.getBytes());
 
             Mensagem m = new Mensagem(Constantes.TIPO_RELATORIO_REQ, "CLIENTE");
@@ -119,13 +121,13 @@ public class Cliente {
     }
 
     private static void localizarDatacenter() throws Exception {
-        String[] d = buscarServico("CLOUD");
-        ipCloud = d[0].split(":")[0];
+        String[] d = buscarServico("PROXY");
 
+        ipCloud = d[0].split(":")[0];
         portaCloud = Constantes.PORTA_FIREWALL_1_TCP;
 
-        chavePublicaCloud = decodificarChavePublica(d[1]);
-        System.out.println("[CLIENTE] Conectando via FIREWALL DE BORDA: " + ipCloud + ":" + portaCloud);
+        chavePublicaProxy = decodificarChavePublica(d[1]);
+        System.out.println("[CLIENTE] Conectando via FIREWALL DE BORDA (Alvo Cripto: Proxy): " + ipCloud + ":" + portaCloud);
     }
 
     private static String[] buscarServico(String n) throws Exception {

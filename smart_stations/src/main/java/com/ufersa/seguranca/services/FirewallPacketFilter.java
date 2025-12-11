@@ -89,7 +89,15 @@ public class FirewallPacketFilter {
 
         System.out.println("[FW-FILTER-TCP] Conexao aceita de " + ipOrigem + " -> Repassando ao Proxy");
 
-        try (Socket socketProxy = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_FIREWALL_2_PROXY); ObjectOutputStream outProxy = new ObjectOutputStream(socketProxy.getOutputStream()); ObjectInputStream inProxy = new ObjectInputStream(socketProxy.getInputStream()); ObjectOutputStream outCliente = new ObjectOutputStream(socketCliente.getOutputStream()); ObjectInputStream inCliente = new ObjectInputStream(socketCliente.getInputStream())) {
+        try (Socket socketProxy = new Socket(Constantes.IP_LOCAL, Constantes.PORTA_FIREWALL_2_PROXY)) {
+            ObjectOutputStream outProxy = new ObjectOutputStream(socketProxy.getOutputStream());
+            outProxy.flush();
+            ObjectInputStream inProxy = new ObjectInputStream(socketProxy.getInputStream());
+
+            ObjectOutputStream outCliente = new ObjectOutputStream(socketCliente.getOutputStream());
+            outCliente.flush();
+            ObjectInputStream inCliente = new ObjectInputStream(socketCliente.getInputStream());
+
             Object msgCliente = inCliente.readObject();
 
             outProxy.writeObject(msgCliente);
@@ -104,6 +112,11 @@ public class FirewallPacketFilter {
 
         } catch (Exception e) {
             System.out.println("[FW-FILTER-TCP] Erro na ponte: " + e.getMessage());
+        } finally {
+            try {
+                socketCliente.close();
+            } catch (IOException e) {
+            }
         }
     }
 

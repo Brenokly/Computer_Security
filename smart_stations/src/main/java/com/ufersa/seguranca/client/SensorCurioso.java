@@ -23,7 +23,6 @@ public class SensorCurioso {
         }
 
         System.out.println("Agora tentando enviar dados normais na porta 6000...");
-        // Tenta porta 6000 (A real) - Deve falhar pois o IP já foi queimado
         try (DatagramSocket s = new DatagramSocket()) {
             DatagramPacket p = new DatagramPacket(dados, dados.length, ipLocal, 6000);
             s.send(p);

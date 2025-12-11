@@ -12,13 +12,6 @@ public class ImplArgon2 {
 
   private static final Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
 
-  /**
-   * Gera um hash seguro usando Argon2.
-   * Parâmetros configurados conforme Prática 8.2:
-   * - Iterações: 4 (Tempo de processamento)
-   * - Memória: 65536 KiB (64 MB - Custo de memória para evitar FPGA/ASIC)
-   * - Paralelismo: 1 (Threads)
-   */
   public static String gerarHash(String senha) {
     try {
       return argon2.hash(4, 65536, 1, senha.toCharArray());
